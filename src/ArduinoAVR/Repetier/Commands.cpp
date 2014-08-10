@@ -605,24 +605,29 @@ void Commands::executeGCode(GCode *com)
         }
         break;
 #if FEATURE_Z_PROBE
-        case 29: // 3 points, build average
+        case 29: // 3 points, build average. If the P parameter is specified this will only probe the current location.
         {
             GCode::executeFString(Com::tZProbeStartScript);
             bool oldAutolevel = Printer::isAutolevelActive();
             Printer::setAutolevelActive(false);
             float sum = 0,last,oldFeedrate = Printer::feedrate;
-            Printer::moveTo(EEPROM::zProbeX1(),EEPROM::zProbeY1(),IGNORE_COORDINATE,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
-            sum = Printer::runZProbe(true,false,Z_PROBE_REPETITIONS,false);
-            if(sum<0) break;
-            Printer::moveTo(EEPROM::zProbeX2(),EEPROM::zProbeY2(),IGNORE_COORDINATE,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
-            last = Printer::runZProbe(false,false);
-            if(last<0) break;
-            sum+= last;
-            Printer::moveTo(EEPROM::zProbeX3(),EEPROM::zProbeY3(),IGNORE_COORDINATE,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
-            last = Printer::runZProbe(false,true);
-            if(last<0) break;
-            sum+= last;
-            sum *= 0.33333333333333;
+            if(!com->hasP()) {
+              Printer::moveTo(EEPROM::zProbeX1(),EEPROM::zProbeY1(),IGNORE_COORDINATE,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
+              sum = Printer::runZProbe(true,false,Z_PROBE_REPETITIONS,false);
+              if(sum<0) break;
+              Printer::moveTo(EEPROM::zProbeX2(),EEPROM::zProbeY2(),IGNORE_COORDINATE,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
+              last = Printer::runZProbe(false,false);
+              if(last<0) break;
+              sum+= last;
+              Printer::moveTo(EEPROM::zProbeX3(),EEPROM::zProbeY3(),IGNORE_COORDINATE,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
+              last = Printer::runZProbe(false,true);
+              if(last<0) break;
+              sum+= last;
+              sum *= 0.33333333333333;
+            } else {
+              sum = Printer::runZProbe(true,false,Z_PROBE_REPETITIONS,false);
+              if(sum<0) break;
+            }
             Com::printFLN(Com::tZProbeAverage,sum);
             if(com->hasS() && com->S)
             {
