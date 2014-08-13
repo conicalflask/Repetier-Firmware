@@ -1,6 +1,8 @@
 import pprint
 from collections import namedtuple
 import random
+import math
+import numpy as np
 
 #A playpen for testing ideas related to automatic bed compensation for reprap firmware.
 
@@ -85,8 +87,30 @@ triangles = range(triangleCount)
 #Constructs a plane equation from a triangle of three 3D points
 #(http://stackoverflow.com/questions/1985427/plane-equation-for-3d-vectors)
 def mkTriangle(p1,p2,p3):
-	#continue
-	pass
+	x1, y1, z1 = p1
+	x2, y2, z2 = p2
+	x3, y3, z3 = p3
+	v1 = [x3 - x1, y3 - y1, z3 - z1]
+	v2 = [x2 - x1, y2 - y1, z2 - z1]
+	cp = [v1[1] * v2[2] - v1[2] * v2[1],
+      	  v1[2] * v2[0] - v1[0] * v2[2],
+      	  v1[0] * v2[1] - v1[1] * v2[0]]
+
+    #got the normal, now normalize it:
+	magnitude = math.sqrt(cp[0]*cp[0]
+    	                 +cp[1]*cp[1]
+    	                 +cp[2]*cp[2]);
+
+	cp[0] = cp[0]/magnitude;
+	cp[1] = cp[1]/magnitude;
+	cp[2] = cp[2]/magnitude;
+	#the normal is now normalized.
+	a, b, c = cp
+
+	d = a * x1 + b * y1 + c * z1
+
+	#pprint.pprint(locals())
+	return Triangle(a,b,c,d);
 
 
 
@@ -101,6 +125,8 @@ def probeBed():
 	previousRow = range(probeX)
 	for i in range(probeX):
 		previousRow[i] = probePoint()
+		print "%.3f"%previousRow[i],
+	print
 
 	#now probe all subsequent rows:
 	for y in range(1,probeY):
@@ -119,15 +145,52 @@ def probeBed():
 			onTriangle = onTriangle+2;
 
 		previousRow = thisRow
+		for i in range(len(previousRow)):
+			print "%.3f"%previousRow[i],
+		print
 
 	#done
 	pass
 
 #so... probe our virtual bed!
+print "Simulated bed height readings:"
 probeBed()
 
-print triangles
+#great! now let's try moving across our "bed"
 
+currentPosition = [0,0,0]
+
+#gets the z height at the x y provided by looking it up in the mesh
+def getZatPoint(x,y):
+	#1) determine which square this point is in
+	inSX = x%1;
+	inSY = y%1;
+	sqX = x-inSX #do it this way so it'll work when squares are not 1 unit across
+	sqY = y-inSY
+	#2) is this the A or the B triangle?
+	isB=0
+	if (inSX+inSY)>1:
+		isB=1
+	#3) Calculate triangle index in array
+	tIdx = int(sqX*2 + sqY*(probeX-1)*2 + isB)
+
+
+	#4) Calculate Z from the plane equation of this triangle
+	plane = triangles[tIdx];
+
+	z = (plane.d - plane.a * x - plane.b * y) / plane.c
+
+	return z
+
+	pass
+
+#print triangles
+print
+print "Estimated heights at (x,y) using the bed mesh:"
+for y in np.arange(0,probeY-1,0.3):
+	for x in np.arange(0,probeX-1,0.3):
+		print "(%.1f,%.1f):%.3f 	" % (x,y,getZatPoint(x,y)),
+	print
 
 
 
