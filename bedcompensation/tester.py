@@ -116,7 +116,7 @@ def mkTriangle(p1,p2,p3):
 
 
 def probePoint():
-	return random.random()
+	return random.uniform(-1.5,1.5)
 
 def probeBed():
 	onTriangle = 0
@@ -156,12 +156,8 @@ def probeBed():
 print "Simulated bed height readings:"
 probeBed()
 
-#great! now let's try moving across our "bed"
 
-currentPosition = [0,0,0]
-
-#gets the z height at the x y provided by looking it up in the mesh
-def getZatPoint(x,y):
+def getTriangleIndex(x,y):
 	#1) determine which square this point is in
 	inSX = x%1;
 	inSY = y%1;
@@ -173,7 +169,12 @@ def getZatPoint(x,y):
 		isB=1
 	#3) Calculate triangle index in array
 	tIdx = int(sqX*2 + sqY*(probeX-1)*2 + isB)
+	return tIdx
 
+#gets the z height at the x y provided by looking it up in the mesh
+def getZatPoint(x,y):
+	
+	tIdx = getTriangleIndex(x,y)
 
 	#4) Calculate Z from the plane equation of this triangle
 	plane = triangles[tIdx];
@@ -182,7 +183,89 @@ def getZatPoint(x,y):
 
 	return z
 
-	pass
+
+correctZByHeight = 5.0
+
+#Gets the remapped Z height for a requested point in 3D space.
+# if z >= correctZByHeight then returns z
+#
+# otherwise maps z according to the linear scaling:
+# 0-correctZByHeight -> getZatPoint(z)-correctZByHeight
+def mappedZ(x,y,z):
+	if z >= correctZByHeight:
+		return z
+	else:
+		return getZatPoint(x,y) * (1-z/correctZByHeight) + z
+
+
+#great! now let's try moving across our "bed"
+currentPosition = [0,0,getZatPoint(0,0)]
+
+def commitMove(x,y,z,e,emult):
+	global currentPosition
+	x1,y1,z1 = currentPosition
+	print "Moving from (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f (e%%:%.2f)"%(x1,y1,z1,x,y,z,e,emult)
+	currentPosition = [x,y,z]
+
+systemEMult = 1
+previousPointEMult = 1
+
+#will emit a trace of where to split the move to match edges on our mesh.
+def moveTo(x,y,z,e):
+	x2,y2,z2 = x,y,z
+	x1,y1,z1 = currentPosition
+
+	finalTriangle = getTriangleIndex(x2,y2)
+
+	overallGradient = (y2-y1)/(x2-x1)
+	moveC = y1-overallGradient*x1   # C value for line equation of this move.
+
+	while True:
+		x1,y1,z1 = currentPosition
+
+		currentTriangle = getTriangleIndex(x1,y1)
+
+		if currentTriangle == finalTriangle:
+			tZ = mappedZ(x,y,z)
+			global previousPointEMult
+			gotoEMult = systemEMult*(correctZByHeight-getZatPoint(x,y))/correctZByHeight
+			moveEMult = (gotoEMult+previousPointEMult)/2
+			previousPointEMult = gotoEMult
+			commitMove(x,y,tZ,e,moveEMult*100)
+			return
+		else:
+			print "need to move to another triangle"
+			return
+			pass
+			#goesRight = x2>x1
+			#goesUp = y2>y1
+			#positionInBoxX = x1%1
+			#positionInBoxY = y1%1
+			#inboxX = round(x1)
+			#inboxY = round(y1)
+
+			#inB = (positionInBoxX+positionInBoxY)>1
+			#inA = not inB
+
+		
+
+			#calculate distance to crossing horizontal and virtical boundaries 
+			#if goesRight:
+		#		nextX = inboxX+1
+	#		else:
+#				nextX = inboxX
+
+#			toVirticalY = overallGradient*nextX + moveC
+
+	
+
+			#if goesUp:
+		#		distanceToY = 1-positionInBoxY
+	#		else:
+	#			distanceToY = -positionInBoxY
+
+	#		toCornerGradient = distanceToY/distanceToX
+
 
 #print triangles
 print
@@ -192,6 +275,14 @@ for y in np.arange(0,probeY-1,0.3):
 		print "(%.1f,%.1f):%.3f 	" % (x,y,getZatPoint(x,y)),
 	print
 
+#test scaling with Z
+print
+print "At (1,1) Z used for a requested Z height:"
+for z in np.arange(-1,6,0.2):
+	print "Zin: %.2f -> %.2f"%(z,mappedZ(1,1,z))
 
 
+print "What paths should we take to go across the bed to some coords (with an extrude of 2):"
+moveTo(0.3,0.3,0,1)
+moveTo(1.65,2.9,2,2)
 
