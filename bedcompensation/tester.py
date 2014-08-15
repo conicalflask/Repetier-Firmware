@@ -201,20 +201,35 @@ def mappedZ(x,y,z):
 #great! now let's try moving across our "bed"
 currentPosition = [0,0,getZatPoint(0,0)]
 
-def commitMove(x,y,z,e,emult):
+#issues a gcode move to the requested x,y,z,e
+def commitMove(x,y,z,e):
 	global currentPosition
 	x1,y1,z1 = currentPosition
-	print "Moving from (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f (e%%:%.2f)"%(x1,y1,z1,x,y,z,e,emult)
+
+	tZ = mappedZ(x,y,z)
+	global previousPointEMult
+	gotoEMult = systemEMult*(correctZByHeight-getZatPoint(x,y))/correctZByHeight
+	moveEMult = (gotoEMult+previousPointEMult)/2
+	previousPointEMult = gotoEMult
+
+	print "Moving from (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f (e%%:%.2f)"%(x1,y1,z1,x,y,tZ,e,moveEMult*100)
 	currentPosition = [x,y,z]
 
 systemEMult = 1
 previousPointEMult = 1
+
 
 #will emit a trace of where to split the move to match edges on our mesh.
 def moveTo(x,y,z,e):
 	x2,y2,z2 = x,y,z
 	x1,y1,z1 = currentPosition
 
+	goesRight = x2>x1
+	goesUp = y2>y1
+
+	inB = (positionInBoxX+positionInBoxY)>1
+	inA = not inB
+	
 	finalTriangle = getTriangleIndex(x2,y2)
 
 	overallGradient = (y2-y1)/(x2-x1)
@@ -222,49 +237,36 @@ def moveTo(x,y,z,e):
 
 	while True:
 		x1,y1,z1 = currentPosition
-
+		
+		positionInBoxX = x1%1
+		positionInBoxY = y1%1
+		inboxX = round(x1)
+		inboxY = round(y1)
+	
 		currentTriangle = getTriangleIndex(x1,y1)
 
 		if currentTriangle == finalTriangle:
-			tZ = mappedZ(x,y,z)
-			global previousPointEMult
-			gotoEMult = systemEMult*(correctZByHeight-getZatPoint(x,y))/correctZByHeight
-			moveEMult = (gotoEMult+previousPointEMult)/2
-			previousPointEMult = gotoEMult
-			commitMove(x,y,tZ,e,moveEMult*100)
+			commitMove(x,y,z,e)
 			return
 		else:
-			print "need to move to another triangle"
-			return
+			print "finding next crossing..."
+			
+			if goesRight:
+				distanceToX = 1-positionInBoxX
+				nextCrossX = inboxX+1
+			else:
+				distanceToX = -positionInBoxX
+				nextCrossX = inboxX
+
+			nextCrossX_y = overallGradient * nextCrossX + moveC
+			CONTINUE
+			if goesUp:
+				distanceToY = 1-positionInBoxY
+			else:
+				distanceToY = -positionInBoxY
+
 			pass
-			#goesRight = x2>x1
-			#goesUp = y2>y1
-			#positionInBoxX = x1%1
-			#positionInBoxY = y1%1
-			#inboxX = round(x1)
-			#inboxY = round(y1)
-
-			#inB = (positionInBoxX+positionInBoxY)>1
-			#inA = not inB
-
-		
-
-			#calculate distance to crossing horizontal and virtical boundaries 
-			#if goesRight:
-		#		nextX = inboxX+1
-	#		else:
-#				nextX = inboxX
-
-#			toVirticalY = overallGradient*nextX + moveC
-
-	
-
-			#if goesUp:
-		#		distanceToY = 1-positionInBoxY
-	#		else:
-	#			distanceToY = -positionInBoxY
-
-	#		toCornerGradient = distanceToY/distanceToX
+			
 
 
 #print triangles
