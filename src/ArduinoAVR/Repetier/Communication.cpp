@@ -363,6 +363,10 @@ FSTRINGVALUE(Com::tCreationFailed,"Creation failed")
 FSTRINGVALUE(Com::tSDErrorCode,"SD errorCode:")
 #endif // SDSUPPORT
 
+#ifdef BEDCOMPENSATION
+FSTRINGVALUE(Com::tMeshParams,"Mesh parameters:")
+#endif
+
 void Com::printWarningF(FSTRINGPARAM(text)) {
     printF(tWarning);
     printF(text);

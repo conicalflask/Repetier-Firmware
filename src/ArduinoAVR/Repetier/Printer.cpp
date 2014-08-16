@@ -1295,9 +1295,9 @@ float Printer::runZProbe(bool first,bool last,uint8_t repeat,bool runStartScript
             PrintLine::moveRelativeDistanceInSteps(0,0,shortMove,0,EEPROM::zProbeSpeed(),true,false);
     }
     float distance = (float)sum * invAxisStepsPerMM[Z_AXIS] / (float)repeat + EEPROM::zProbeHeight();
-    Com::printF(Com::tZProbe,distance);
-    Com::printF(Com::tSpaceXColon,realXPosition());
-    Com::printFLN(Com::tSpaceYColon,realYPosition());
+    //Com::printF(Com::tZProbe,distance);
+    //Com::printF(Com::tSpaceXColon,realXPosition());
+    //Com::printFLN(Com::tSpaceYColon,realYPosition());
     // Go back to start position
     PrintLine::moveRelativeDistanceInSteps(0,0,lastCorrection-currentPositionSteps[Z_AXIS],0,EEPROM::zProbeSpeed(),true,false);
     //PrintLine::moveRelativeDistanceInSteps(offx,offy,0,0,EEPROM::zProbeXYSpeed(),true,true);

@@ -737,6 +737,92 @@ void Commands::executeGCode(GCode *com)
         break;
 #endif
 #endif
+#ifdef BEDCOMPENSATION
+		case 35:  //G35 - detailed probe of bed TODO: and optionally build an in-memory mesh of the bed for runtime compensation.
+			{
+                /*
+    			 This command will probe a set of points the cover the whole print surface spaced apart by the P parameter.
+    			 The default spacing is 30mm.
+    			 
+    			 Output from the command:
+    			 offsetX, offsetY, maxX, maxY, spacing
+    			 then a line for each Y position probed with as many points as probed in X formatted as
+    			 z1 z2 z3 zN
+
+                 if a point couln't be probed for some reason (such as outside the build area) the value -1000 will be emitted.
+                 This is for printers that have circular build surfaces but the mesh is much easier to construct as a square.
+    			 
+    			 This command will (in future) support mesh generation in-firmware so that a python gcode-rewriter stage is not needed.
+
+                 NOTE: make sure this command is run with the same autolevelling settings that would be used for the print!
+    			 */
+    				
+    			float spacing = 30.0;
+    			if (com->hasP()) spacing = com->P;
+    			
+                float maxX,maxY;
+                float meshOffsetX,meshOffsetY;
+
+                #if DRIVE_SYSTEM==3
+                    float radius = EEPROM::deltaMaxRadius();
+                    maxX = maxY = radius;
+                    meshOffsetX = meshOffsetY = -radius;
+                #else
+                    maxX = X_MAX_LENGTH;
+                    maxY = Y_MAX_LENGTH;
+                    meshOffsetY=meshOffsetX=0.0;
+                #endif
+
+                float params[5] = {meshOffsetX,meshOffsetY,maxX,maxY,spacing};
+
+                Com::printArrayFLN(Com::tMeshParams,params,5,3);
+
+                int xProbePoints = (int)((maxX-meshOffsetX)/spacing)+1;
+
+                //Do an initial probe to deploy the probe if needed.
+                Printer::moveToReal(0,0,BEDCOMPENSATION_PROBEHEIGHT,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
+                Printer::runZProbe(true,false);
+
+                for (float yProbe=meshOffsetY+BEDCOMPENSATION_MARGIN; yProbe<maxY+spacing; yProbe+=spacing) {
+                    float xPoints[xProbePoints];
+                    int onXPoint = 0;
+                    for (float xProbe=meshOffsetX+BEDCOMPENSATION_MARGIN; xProbe<maxX+spacing; xProbe+=spacing) {
+
+                        //dont try to probe outside the allowable region
+
+                        // Com::printF(Com::tSpace,"Attempting to probe at:");
+                        // Com::printFLN(Com::tSpaceXColon,xProbe);
+                        // Com::printFLN(Com::tSpaceYColon,yProbe);
+                        
+                        bool allowed = true;
+                        #if DRIVE_SYSTEM == 3
+                            float xDist = xProbe-EEPROM::zProbeXOffset();
+                            float yDist = yProbe-EEPROM::zProbeYOffset();
+                            xDist = xDist*xDist + BEDCOMPENSATION_MARGIN*BEDCOMPENSATION_MARGIN;
+                            yDist = yDist*yDist + BEDCOMPENSATION_MARGIN*BEDCOMPENSATION_MARGIN;
+                            allowed &= (xDist+yDist <= Printer::deltaMaxRadiusSquared);
+
+                        #endif // DRIVE_SYSTEM
+
+                        if (allowed) {
+                            //probe allowed!
+                            Printer::moveToReal(xProbe,yProbe,BEDCOMPENSATION_PROBEHEIGHT,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
+                            xPoints[onXPoint++] = Printer::currentPosition[Z_AXIS]-Printer::runZProbe(false,false);
+                        } else {
+                            xPoints[onXPoint++] = BEDCOMPENSATION_INVALIDPOINT;
+                        }
+
+                    }
+
+                    Com::printArrayFLN(Com::tSpace,xPoints,xProbePoints,3);
+                }
+
+                //Do a final prove to retract the probe if needed.
+                Printer::moveToReal(0,0,BEDCOMPENSATION_PROBEHEIGHT,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
+                Printer::runZProbe(false,true);
+			}
+			break;
+#endif
         case 90: // G90
             Printer::relativeCoordinateMode = false;
             break;

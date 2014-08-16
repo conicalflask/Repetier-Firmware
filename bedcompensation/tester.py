@@ -169,6 +169,8 @@ def getTriangleIndex(x,y):
 		isB=1
 	#3) Calculate triangle index in array
 	tIdx = int(sqX*2 + sqY*(probeX-1)*2 + isB)
+
+
 	return tIdx
 
 #gets the z height at the x y provided by looking it up in the mesh
@@ -199,12 +201,12 @@ def mappedZ(x,y,z):
 
 
 #great! now let's try moving across our "bed"
-currentPosition = [0,0,getZatPoint(0,0)]
+currentPosition = [0,0,getZatPoint(0,0),0]
 
 #issues a gcode move to the requested x,y,z,e
 def commitMove(x,y,z,e):
 	global currentPosition
-	x1,y1,z1 = currentPosition
+	x1,y1,z1,e1 = currentPosition
 
 	tZ = mappedZ(x,y,z)
 	global previousPointEMult
@@ -212,44 +214,58 @@ def commitMove(x,y,z,e):
 	moveEMult = (gotoEMult+previousPointEMult)/2
 	previousPointEMult = gotoEMult
 
-	print "Moving from (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f (e%%:%.2f)"%(x1,y1,z1,x,y,tZ,e,moveEMult*100)
-	currentPosition = [x,y,z]
+	print "Committing move from (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f (e%%:%.2f)"%(x1,y1,z1,x,y,tZ,e,moveEMult*100)
+	currentPosition = [x,y,tZ,e]
 
 systemEMult = 1
 previousPointEMult = 1
 
+IGNORE_DISTANCE = 999999
 
 #will emit a trace of where to split the move to match edges on our mesh.
 def moveTo(x,y,z,e):
-	x2,y2,z2 = x,y,z
-	x1,y1,z1 = currentPosition
+	x2,y2,z2,e2 = x,y,z,e
+	x1,y1,z1,e1 = currentPosition
+
+	print "Move requested from current position (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f"%(x1,y1,z1,x,y,z,e)
 
 	goesRight = x2>x1
 	goesUp = y2>y1
-
-	inB = (positionInBoxX+positionInBoxY)>1
-	inA = not inB
 	
 	finalTriangle = getTriangleIndex(x2,y2)
+	print "finalTriangle: %d"%finalTriangle
 
 	overallGradient = (y2-y1)/(x2-x1)
 	moveC = y1-overallGradient*x1   # C value for line equation of this move.
 
+
+	totalDistanceSqr = (x2-x1)**2 + (y2-y1)**2
+
+	zStart = z1
+	eStart = e1
+	totalRelativeE = e2-eStart
+	totalRelativeZ = z2-zStart
+
 	while True:
-		x1,y1,z1 = currentPosition
+
+		x1,y1,z1,e1 = currentPosition
 		
 		positionInBoxX = x1%1
 		positionInBoxY = y1%1
-		inboxX = round(x1)
-		inboxY = round(y1)
+		inboxX = int(x1)
+		inboxY = int(y1)
 	
 		currentTriangle = getTriangleIndex(x1,y1)
+
+		print "currentTriangle: %d"%currentTriangle
 
 		if currentTriangle == finalTriangle:
 			commitMove(x,y,z,e)
 			return
 		else:
-			print "finding next crossing..."
+			print "finding next crossing...",
+			print "from current position (%.2f,%.2f,%.2f)"%(x1,y1,z1)
+
 			
 			if goesRight:
 				distanceToX = 1-positionInBoxX
@@ -258,15 +274,80 @@ def moveTo(x,y,z,e):
 				distanceToX = -positionInBoxX
 				nextCrossX = inboxX
 
-			nextCrossX_y = overallGradient * nextCrossX + moveC
-			CONTINUE
 			if goesUp:
 				distanceToY = 1-positionInBoxY
+				nextCrossY = inboxY+1
 			else:
 				distanceToY = -positionInBoxY
+				nextCrossY = inboxY			
 
-			pass
+			#point it crosses a virtical edge
+			nextCrossX_y = overallGradient * nextCrossX + moveC
+			nextCrossX_y_dst = nextCrossX_y-y1
+			nextCrossXdstS = distanceToX**2 + nextCrossX_y_dst**2
+			#we dont care about the X crossing if we're already on this point.
+			if (nextCrossXdstS<=0): nextCrossXdstS = IGNORE_DISTANCE
+
+			print "will cross X-line at (%.2f,%.2f) in %.2f"%(nextCrossX,nextCrossX_y,math.sqrt(nextCrossXdstS))
+
+			#point it crosses a horizontal edge
+			nextCrossY_x = (nextCrossY-moveC)/overallGradient
+			nextCrossY_x_dst = nextCrossY_x-x1
+			nextCrossYdstS = distanceToY**2 + nextCrossY_x_dst**2
+			#we dont care about the Y crossing if we're already on this point.
+			if (nextCrossYdstS<=0): nextCrossYdstS = IGNORE_DISTANCE
+
+			print "will cross Y-line at (%.2f,%.2f) in %.2f"%(nextCrossY_x,nextCrossY,math.sqrt(nextCrossYdstS))
+
+			#point it crosses a diagonal edge
+			#The diagonal line in our box has a Y-intercept == (our inboxY+1) and a gradient of -1
+
+			nextCrossD_x = (inboxY+1-moveC) / (overallGradient+1)
+			nextCrossD_y = overallGradient * nextCrossD_x + moveC
+			ncd_dx = (nextCrossD_x-x1)
+			ncd_dy = (nextCrossD_y-y1)
+			#make sure we only accept line crossings in the direction we're going.
+			if ((ncd_dx<0) == goesRight) or ((ncd_dy<0) == goesUp):
+				nextCrossDdstS = IGNORE_DISTANCE
+			else:
+				nextCrossDdstS = ncd_dx**2 + ncd_dy**2
 			
+			#we dont care about the D crossing if we're already on this point.
+			if (nextCrossDdstS<=0): nextCrossDdstS = IGNORE_DISTANCE
+
+			print "will cross D-line at (%.2f,%.2f) in %.2f"%(nextCrossD_x,nextCrossD_y,math.sqrt(nextCrossDdstS))
+
+			closest = min(nextCrossXdstS,nextCrossYdstS,nextCrossDdstS);
+
+			print "closest crossing is %.2f far away."%math.sqrt(closest)
+
+			if nextCrossXdstS==closest:
+				print "moving to the next X-crossing",
+				moveToX = nextCrossX
+				moveToY = nextCrossX_y
+			elif nextCrossYdstS==closest:
+				print "moving to the next Y-crossing",
+				moveToX = nextCrossY_x
+				moveToY = nextCrossY
+			else:
+				print "moving to the next D-crossing",
+				moveToX = nextCrossD_x
+				moveToY = nextCrossD_y
+
+			print "at (%.2f,%.2f)"%(moveToX,moveToY)
+
+			#How much of the remaining line is being consumed?
+			fractionConsumed = closest/totalDistanceSqr
+
+			#calculate new E position (assuming absolute E is wanted by the consumer)
+			eMove = eStart + totalRelativeE*fractionConsumed
+
+			#Calculate what Z should be at the end of this sub-move
+			zMove = zStart + totalRelativeZ*fractionConsumed
+
+			#pprint.pprint(locals())
+
+			commitMove(moveToX,moveToY,zMove,eMove)
 
 
 #print triangles
@@ -285,6 +366,7 @@ for z in np.arange(-1,6,0.2):
 
 
 print "What paths should we take to go across the bed to some coords (with an extrude of 2):"
-moveTo(0.3,0.3,0,1)
+moveTo(0.3,0.6,0,1)
+currentPosition = [0.7,0.7,0,1]
 moveTo(1.65,2.9,2,2)
 

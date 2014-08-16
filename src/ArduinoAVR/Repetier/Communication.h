@@ -350,7 +350,9 @@ FSTRINGVAR(tCreationFailed)
 FSTRINGVAR(tSDErrorCode)
 #endif // SDSUPPORT
 
-
+#ifdef BEDCOMPENSATION
+FSTRINGVAR(tMeshParams)
+#endif
 
 static void printNumber(uint32_t n);
 static void printWarningF(FSTRINGPARAM(text));
