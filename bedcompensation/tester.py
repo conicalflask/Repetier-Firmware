@@ -3,6 +3,7 @@ from collections import namedtuple
 import random
 import math
 import numpy as np
+import sys
 
 #A playpen for testing ideas related to automatic bed compensation for reprap firmware.
 
@@ -221,25 +222,36 @@ systemEMult = 1
 previousPointEMult = 1
 
 IGNORE_DISTANCE = 999999
+FASTPATH_DISTANCE_SQR = 0.1*0.1 #(mm^2)
 
 #will emit a trace of where to split the move to match edges on our mesh.
 def moveTo(x,y,z,e):
 	x2,y2,z2,e2 = x,y,z,e
 	x1,y1,z1,e1 = currentPosition
 
+
 	print "Move requested from current position (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f"%(x1,y1,z1,x,y,z,e)
+
+	totalDistance = math.sqrt((x2-x1)**2 + (y2-y1)**2)
+
+	#fastpath:
+	if (totalDistance<FASTPATH_DISTANCE_SQR):
+		commitMove(x,y,z,e)
+		print "moveTo done. (fastpath)"
+		print
+		return
+
+	if x2-x1==0:
+		overallGradient = sys.float_info.max
+	else:
+		overallGradient = (y2-y1)/(x2-x1)
+	moveC = y1-overallGradient*x1   # C value for line equation of this move.
 
 	goesRight = x2>x1
 	goesUp = y2>y1
-	
-	finalTriangle = getTriangleIndex(x2,y2)
-	print "finalTriangle: %d"%finalTriangle
 
-	overallGradient = (y2-y1)/(x2-x1)
-	moveC = y1-overallGradient*x1   # C value for line equation of this move.
-
-
-	totalDistanceSqr = (x2-x1)**2 + (y2-y1)**2
+	#a counter of distance completed. (to enable running Z and E counters)
+	totalComplete = 0
 
 	zStart = z1
 	eStart = e1
@@ -254,100 +266,108 @@ def moveTo(x,y,z,e):
 		positionInBoxY = y1%1
 		inboxX = int(x1)
 		inboxY = int(y1)
-	
-		currentTriangle = getTriangleIndex(x1,y1)
 
-		print "currentTriangle: %d"%currentTriangle
+		print "finding next point to goto",
+		print "from current position (%.2f,%.2f,%.2f)"%(x1,y1,z1)
 
-		if currentTriangle == finalTriangle:
-			commitMove(x,y,z,e)
-			return
+		
+		if goesRight:
+			distanceToX = 1-positionInBoxX
+			nextCrossX = inboxX+1
 		else:
-			print "finding next crossing...",
-			print "from current position (%.2f,%.2f,%.2f)"%(x1,y1,z1)
+			distanceToX = -positionInBoxX
+			nextCrossX = inboxX
 
-			
-			if goesRight:
-				distanceToX = 1-positionInBoxX
-				nextCrossX = inboxX+1
-			else:
-				distanceToX = -positionInBoxX
-				nextCrossX = inboxX
+		if goesUp:
+			distanceToY = 1-positionInBoxY
+			nextCrossY = inboxY+1
+		else:
+			distanceToY = -positionInBoxY
+			nextCrossY = inboxY			
 
-			if goesUp:
-				distanceToY = 1-positionInBoxY
-				nextCrossY = inboxY+1
-			else:
-				distanceToY = -positionInBoxY
-				nextCrossY = inboxY			
+		#point it crosses a virtical edge
+		nextCrossX_y = overallGradient * nextCrossX + moveC
+		nextCrossX_y_dst = nextCrossX_y-y1
+		nextCrossXdstS = distanceToX**2 + nextCrossX_y_dst**2
+		#we dont care about the X crossing if we're already on this point.
+		if (nextCrossXdstS<=0): nextCrossXdstS = IGNORE_DISTANCE
 
-			#point it crosses a virtical edge
-			nextCrossX_y = overallGradient * nextCrossX + moveC
-			nextCrossX_y_dst = nextCrossX_y-y1
-			nextCrossXdstS = distanceToX**2 + nextCrossX_y_dst**2
-			#we dont care about the X crossing if we're already on this point.
-			if (nextCrossXdstS<=0): nextCrossXdstS = IGNORE_DISTANCE
+		print "will cross X-line at (%.2f,%.2f) in %.2f"%(nextCrossX,nextCrossX_y,math.sqrt(nextCrossXdstS))
 
-			print "will cross X-line at (%.2f,%.2f) in %.2f"%(nextCrossX,nextCrossX_y,math.sqrt(nextCrossXdstS))
+		#point it crosses a horizontal edge
+		nextCrossY_x = (nextCrossY-moveC)/overallGradient
+		nextCrossY_x_dst = nextCrossY_x-x1
+		nextCrossYdstS = distanceToY**2 + nextCrossY_x_dst**2
+		#we dont care about the Y crossing if we're already on this point.
+		if (nextCrossYdstS<=0): nextCrossYdstS = IGNORE_DISTANCE
 
-			#point it crosses a horizontal edge
-			nextCrossY_x = (nextCrossY-moveC)/overallGradient
-			nextCrossY_x_dst = nextCrossY_x-x1
-			nextCrossYdstS = distanceToY**2 + nextCrossY_x_dst**2
-			#we dont care about the Y crossing if we're already on this point.
-			if (nextCrossYdstS<=0): nextCrossYdstS = IGNORE_DISTANCE
+		print "will cross Y-line at (%.2f,%.2f) in %.2f"%(nextCrossY_x,nextCrossY,math.sqrt(nextCrossYdstS))
 
-			print "will cross Y-line at (%.2f,%.2f) in %.2f"%(nextCrossY_x,nextCrossY,math.sqrt(nextCrossYdstS))
+		#point it crosses a diagonal edge
+		#The diagonal line in our box has a Y-intercept == (our inboxY+1) and a gradient of -1
+		nextCrossD_x = (inboxY+inboxX+1-moveC) / (overallGradient+1)
+		nextCrossD_y = overallGradient * nextCrossD_x + moveC
+		ncd_dx = (nextCrossD_x-x1)
+		ncd_dy = (nextCrossD_y-y1)
+		#make sure we only accept line crossings in the direction we're going.
+		if ((ncd_dx<0) == goesRight) or ((ncd_dy<0) == goesUp):
+			nextCrossDdstS = IGNORE_DISTANCE
+		else:
+			nextCrossDdstS = ncd_dx**2 + ncd_dy**2
+		
+		#we dont care about the D crossing if we're already on this point.
+		if (nextCrossDdstS<=0): nextCrossDdstS = IGNORE_DISTANCE
 
-			#point it crosses a diagonal edge
-			#The diagonal line in our box has a Y-intercept == (our inboxY+1) and a gradient of -1
+		print "will cross D-line at (%.2f,%.2f) in %.2f"%(nextCrossD_x,nextCrossD_y,math.sqrt(nextCrossDdstS))
 
-			nextCrossD_x = (inboxY+1-moveC) / (overallGradient+1)
-			nextCrossD_y = overallGradient * nextCrossD_x + moveC
-			ncd_dx = (nextCrossD_x-x1)
-			ncd_dy = (nextCrossD_y-y1)
-			#make sure we only accept line crossings in the direction we're going.
-			if ((ncd_dx<0) == goesRight) or ((ncd_dy<0) == goesUp):
-				nextCrossDdstS = IGNORE_DISTANCE
-			else:
-				nextCrossDdstS = ncd_dx**2 + ncd_dy**2
-			
-			#we dont care about the D crossing if we're already on this point.
-			if (nextCrossDdstS<=0): nextCrossDdstS = IGNORE_DISTANCE
+		targetDstS = (x2-x1)**2 + (y2-y1)**2
 
-			print "will cross D-line at (%.2f,%.2f) in %.2f"%(nextCrossD_x,nextCrossD_y,math.sqrt(nextCrossDdstS))
+		print "target is %.2f away."%math.sqrt(targetDstS);
 
-			closest = min(nextCrossXdstS,nextCrossYdstS,nextCrossDdstS);
+		closest = min(nextCrossXdstS,nextCrossYdstS,nextCrossDdstS,targetDstS);
 
-			print "closest crossing is %.2f far away."%math.sqrt(closest)
+		print "closest crossing is %.2f far away."%math.sqrt(closest)
 
-			if nextCrossXdstS==closest:
-				print "moving to the next X-crossing",
-				moveToX = nextCrossX
-				moveToY = nextCrossX_y
-			elif nextCrossYdstS==closest:
-				print "moving to the next Y-crossing",
-				moveToX = nextCrossY_x
-				moveToY = nextCrossY
-			else:
-				print "moving to the next D-crossing",
-				moveToX = nextCrossD_x
-				moveToY = nextCrossD_y
+		done = False
+		if closest==targetDstS:
+			print "moving to the target",
+			moveToX = x2
+			moveToY = y2
+			done = True
+		elif nextCrossXdstS==closest:
+			print "moving to the next X-crossing",
+			moveToX = nextCrossX
+			moveToY = nextCrossX_y
+		elif nextCrossYdstS==closest:
+			print "moving to the next Y-crossing",
+			moveToX = nextCrossY_x
+			moveToY = nextCrossY
+		elif nextCrossDdstS==closest:
+			print "moving to the next D-crossing",
+			moveToX = nextCrossD_x
+			moveToY = nextCrossD_y
 
-			print "at (%.2f,%.2f)"%(moveToX,moveToY)
 
-			#How much of the remaining line is being consumed?
-			fractionConsumed = closest/totalDistanceSqr
+		print "at (%.2f,%.2f)"%(moveToX,moveToY)
 
-			#calculate new E position (assuming absolute E is wanted by the consumer)
-			eMove = eStart + totalRelativeE*fractionConsumed
+		#How much of the remaining line is being consumed?
+		totalComplete += math.sqrt(closest)
+		fractionComplete = totalComplete/totalDistance
 
-			#Calculate what Z should be at the end of this sub-move
-			zMove = zStart + totalRelativeZ*fractionConsumed
+		#calculate new E position (assuming absolute E is wanted by the consumer)
+		eMove = eStart + totalRelativeE*fractionComplete
 
-			#pprint.pprint(locals())
+		#Calculate what Z should be at the end of this sub-move
+		zMove = zStart + totalRelativeZ*fractionComplete
 
-			commitMove(moveToX,moveToY,zMove,eMove)
+		#pprint.pprint(locals())
+
+		commitMove(moveToX,moveToY,zMove,eMove)
+
+		if done:
+			print "moveTo done."
+			print
+			return
 
 
 #print triangles
@@ -367,6 +387,7 @@ for z in np.arange(-1,6,0.2):
 
 print "What paths should we take to go across the bed to some coords (with an extrude of 2):"
 moveTo(0.3,0.6,0,1)
-currentPosition = [0.7,0.7,0,1]
+moveTo(1,1,0,2)
+moveTo(1,0.3,0,3)
 moveTo(1.65,2.9,2,2)
 
