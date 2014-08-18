@@ -17,7 +17,7 @@
 */
 
 //Make sure we bring in the autoconfigured config
-#include "Configuration-auto.h"
+#include <Configuration-auto.h>
 
 //Now for our new config parameters:
 

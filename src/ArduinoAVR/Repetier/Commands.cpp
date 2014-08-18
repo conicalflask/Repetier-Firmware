@@ -777,7 +777,7 @@ void Commands::executeGCode(GCode *com)
 
                 Com::printArrayFLN(Com::tMeshParams,params,5,3);
 
-                int xProbePoints = (int)((maxX-meshOffsetX)/spacing)+1;
+                int xProbePoints = (int)(( (maxX+spacing) - (meshOffsetX+BEDCOMPENSATION_MARGIN) )/spacing)+1;
 
                 //Do an initial probe to deploy the probe if needed.
                 Printer::moveToReal(0,0,BEDCOMPENSATION_PROBEHEIGHT,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
