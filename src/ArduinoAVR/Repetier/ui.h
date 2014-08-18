@@ -188,9 +188,6 @@
 #define UI_ACTION_SHOW_USERMENU9        4109
 #define UI_ACTION_SHOW_USERMENU10       4110
 
-// Load basic language definition to make sure all values are defined
-#include "uilang.h"
-
 typedef struct {
   const char *text; // Menu text
   uint8_t menuType; // 0 = Info, 1 = Headline, 2 = submenu ref, 3 = direct action command, 4 = modify action command

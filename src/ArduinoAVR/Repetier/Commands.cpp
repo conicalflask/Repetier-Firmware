@@ -814,7 +814,7 @@ void Commands::executeGCode(GCode *com)
 
                     }
 
-                    Com::printArrayFLN(Com::tSpace,xPoints,xProbePoints,3);
+                    Com::printArrayFLN(Com::tProbeRow,xPoints,xProbePoints,3);
                 }
 
                 //Do a final prove to retract the probe if needed.

@@ -18,7 +18,9 @@
 
 #if !defined(UI_DISPLAY_CHARSET) || UI_DISPLAY_CHARSET>3
 #define UI_DISPLAY_CHARSET 1
+#error This header has been included incorrectly! Recheck other headers and config!
 #endif
+
 
 #if UI_DISPLAY_CHARSET==0 // ASCII fallback
 #define CHAR_RIGHT '-'
