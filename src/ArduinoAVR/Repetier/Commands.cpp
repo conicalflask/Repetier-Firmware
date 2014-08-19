@@ -749,7 +749,11 @@ void Commands::executeGCode(GCode *com)
     			 then a line for each Y position probed with as many points as probed in X formatted as
     			 z1 z2 z3 zN
 
-                 if a point couln't be probed for some reason (such as outside the build area) the value -1000 will be emitted.
+				 The offsetX and offsetY emitted for the mesh params line take account of the unprobable margin
+				 so (offsetX, offsetY) is the actual x,y point probed first. All subsequent probe points are spaced by spacing mm.
+				 The maxX and maxY params are mostly for information and are not necessary information to perform compensatory transformations.
+
+                 if a point couln't be probed for some reason (such as outside the build area) the value BEDCOMPENSATION_INVALIDPOINT will be emitted.
                  This is for printers that have circular build surfaces but the mesh is much easier to construct as a square.
     			 
     			 This command will (in future) support mesh generation in-firmware so that a python gcode-rewriter stage is not needed.
@@ -773,7 +777,7 @@ void Commands::executeGCode(GCode *com)
                     meshOffsetY=meshOffsetX=0.0;
                 #endif
 
-                float params[5] = {meshOffsetX,meshOffsetY,maxX,maxY,spacing};
+                float params[5] = {meshOffsetX+BEDCOMPENSATION_MARGIN,meshOffsetY+BEDCOMPENSATION_MARGIN,maxX,maxY,spacing};
 
                 Com::printArrayFLN(Com::tMeshParams,params,5,3);
 

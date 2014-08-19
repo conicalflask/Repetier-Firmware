@@ -216,6 +216,17 @@ def commitMove(x,y,z,e):
 	previousPointEMult = gotoEMult
 
 	print "Committing move from (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f (e%%:%.2f)"%(x1,y1,z1,x,y,tZ,e,moveEMult*100)
+	xdiff = x-x1
+	ydiff = y-y1
+
+	dst = math.sqrt(xdiff**2+ydiff**2)
+
+	if xdiff!=0:
+		m=(y-y1)/(x-x1)
+	else:
+		m=1000
+	c = y1 - m*x1
+	print "Sanity check: y=%.2fx + %.2f		dist:%.2f"%(m,c,dst)
 	currentPosition = [x,y,tZ,e]
 
 systemEMult = 1
@@ -245,7 +256,17 @@ def moveTo(x,y,z,e):
 		overallGradient = sys.float_info.max
 	else:
 		overallGradient = (y2-y1)/(x2-x1)
+
 	moveC = y1-overallGradient*x1   # C value for line equation of this move.
+
+	if (abs(moveC)<1000):
+		printM = overallGradient
+		printC = moveC
+	else:
+		printM = 1000
+		printC = -999
+
+	print "Planned line eq: y=%.2fx + %.2f"%(printM,printC)
 
 	goesRight = x2>x1
 	goesUp = y2>y1
@@ -267,8 +288,8 @@ def moveTo(x,y,z,e):
 		inboxX = int(x1)
 		inboxY = int(y1)
 
-		print "finding next point to goto",
-		print "from current position (%.2f,%.2f,%.2f)"%(x1,y1,z1)
+		#print "finding next point to goto",
+		#print "from current position (%.2f,%.2f,%.2f)"%(x1,y1,z1)
 
 		
 		if goesRight:
@@ -292,7 +313,7 @@ def moveTo(x,y,z,e):
 		#we dont care about the X crossing if we're already on this point.
 		if (nextCrossXdstS<=0): nextCrossXdstS = IGNORE_DISTANCE
 
-		print "will cross X-line at (%.2f,%.2f) in %.2f"%(nextCrossX,nextCrossX_y,math.sqrt(nextCrossXdstS))
+		#print "will cross X-line at (%.2f,%.2f) in %.2f"%(nextCrossX,nextCrossX_y,math.sqrt(nextCrossXdstS))
 
 		#point it crosses a horizontal edge
 		nextCrossY_x = (nextCrossY-moveC)/overallGradient
@@ -301,11 +322,57 @@ def moveTo(x,y,z,e):
 		#we dont care about the Y crossing if we're already on this point.
 		if (nextCrossYdstS<=0): nextCrossYdstS = IGNORE_DISTANCE
 
-		print "will cross Y-line at (%.2f,%.2f) in %.2f"%(nextCrossY_x,nextCrossY,math.sqrt(nextCrossYdstS))
+		#print "will cross Y-line at (%.2f,%.2f) in %.2f"%(nextCrossY_x,nextCrossY,math.sqrt(nextCrossYdstS))
 
 		#point it crosses a diagonal edge
-		#The diagonal line in our box has a Y-intercept == (our inboxY+1) and a gradient of -1
-		nextCrossD_x = (inboxY+inboxX+1-moveC) / (overallGradient+1)
+		#This is more complex as we dont't already know the X or the Y or even which diagonal line we'll cross next.
+		#for any given point, we're bounded by two diagonal lines both with gradients of -1
+		# So, to work out which diagonal line we cross: (and the lines are distiguished by their Y-intercept.
+		# in this explanation c is the Y intercept of the diagonal line that goes through the box our current point is in.		
+
+		#Four predicates are used: inA, steep, goesUp and goesRight, so to find the Y-intercept of interest:
+
+		#if we're in A:
+		#	steep, up: c
+		#   steep, down: c-1
+		#   !steep, right: c
+		#	!steep, left: c-1
+		
+		#if we're in B:
+		#   steep, up: c+1
+		#	steep, down: c
+		#   !steep, right: c+1
+		#   !steep, left: 	c
+
+		#to simplify this:
+		# Let's create a predicate goingPositive that is goesUp if steep or goesRight if !steep.
+		# We can see that the table for B is the same as A but we +1 to the result in all cases.
+		# So combining these we get:
+
+		# y-intercept = c-1
+		# if goesPositive: y-intercept ++
+		# if B: y-intercept ++
+
+		# Here goes:
+
+		steep = abs(overallGradient)>1
+		if steep:
+			goesPositive = goesUp
+		else:
+			goesPositive = goesRight
+		
+		#The y-intercept for the currentbox is the (_x_,_y_)+1, so let's start with this value-1:
+
+		diagYintercept = inboxY+inboxX
+		inB = (positionInBoxX+positionInBoxY)>1
+
+		if goesPositive:
+			diagYintercept = diagYintercept + 1
+
+		if inB:
+			diagYintercept = diagYintercept + 1
+
+		nextCrossD_x = (diagYintercept-moveC) / (overallGradient+1)
 		nextCrossD_y = overallGradient * nextCrossD_x + moveC
 		ncd_dx = (nextCrossD_x-x1)
 		ncd_dy = (nextCrossD_y-y1)
@@ -318,15 +385,15 @@ def moveTo(x,y,z,e):
 		#we dont care about the D crossing if we're already on this point.
 		if (nextCrossDdstS<=0): nextCrossDdstS = IGNORE_DISTANCE
 
-		print "will cross D-line at (%.2f,%.2f) in %.2f"%(nextCrossD_x,nextCrossD_y,math.sqrt(nextCrossDdstS))
+		#print "will cross D-line at (%.2f,%.2f) in %.2f"%(nextCrossD_x,nextCrossD_y,math.sqrt(nextCrossDdstS))
 
 		targetDstS = (x2-x1)**2 + (y2-y1)**2
 
-		print "target is %.2f away."%math.sqrt(targetDstS);
+		#print "target is %.2f away."%math.sqrt(targetDstS);
 
 		closest = min(nextCrossXdstS,nextCrossYdstS,nextCrossDdstS,targetDstS);
 
-		print "closest crossing is %.2f far away."%math.sqrt(closest)
+		#print "closest crossing is %.2f far away."%math.sqrt(closest)
 
 		done = False
 		if closest==targetDstS:
@@ -371,23 +438,24 @@ def moveTo(x,y,z,e):
 
 
 #print triangles
-print
-print "Estimated heights at (x,y) using the bed mesh:"
-for y in np.arange(0,probeY-1,0.3):
-	for x in np.arange(0,probeX-1,0.3):
-		print "(%.1f,%.1f):%.3f 	" % (x,y,getZatPoint(x,y)),
-	print
+#print
+#print "Estimated heights at (x,y) using the bed mesh:"
+#for y in np.arange(0,probeY-1,0.3):
+#	for x in np.arange(0,probeX-1,0.3):
+#		print "(%.1f,%.1f):%.3f 	" % (x,y,getZatPoint(x,y)),
+#	print
 
 #test scaling with Z
-print
-print "At (1,1) Z used for a requested Z height:"
-for z in np.arange(-1,6,0.2):
-	print "Zin: %.2f -> %.2f"%(z,mappedZ(1,1,z))
+#print
+#print "At (1,1) Z used for a requested Z height:"
+#for z in np.arange(-1,6,0.2):
+#	print "Zin: %.2f -> %.2f"%(z,mappedZ(1,1,z))
 
 
-print "What paths should we take to go across the bed to some coords (with an extrude of 2):"
+print "What paths should we take to go across the bed to some coords:"
 moveTo(0.3,0.6,0,1)
 moveTo(1,1,0,2)
 moveTo(1,0.3,0,3)
 moveTo(1.65,2.9,2,2)
+moveTo(0,0,0,5)
 
