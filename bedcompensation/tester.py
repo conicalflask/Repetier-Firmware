@@ -204,6 +204,9 @@ def mappedZ(x,y,z):
 #great! now let's try moving across our "bed"
 currentPosition = [0,0,getZatPoint(0,0),0]
 
+#accumulator for segment distances
+moveDst = 0
+
 #issues a gcode move to the requested x,y,z,e
 def commitMove(x,y,z,e):
 	global currentPosition
@@ -220,6 +223,9 @@ def commitMove(x,y,z,e):
 	ydiff = y-y1
 
 	dst = math.sqrt(xdiff**2+ydiff**2)
+
+	global moveDst
+	moveDst = moveDst + dst
 
 	if xdiff!=0:
 		m=(y-y1)/(x-x1)
@@ -244,6 +250,10 @@ def moveTo(x,y,z,e):
 	print "Move requested from current position (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f"%(x1,y1,z1,x,y,z,e)
 
 	totalDistance = math.sqrt((x2-x1)**2 + (y2-y1)**2)
+	
+	
+	global moveDst
+	moveDst = 0
 
 	#fastpath:
 	if (totalDistance<FASTPATH_DISTANCE_SQR):
@@ -307,20 +317,29 @@ def moveTo(x,y,z,e):
 			nextCrossY = inboxY			
 
 		#point it crosses a virtical edge
-		nextCrossX_y = overallGradient * nextCrossX + moveC
-		nextCrossX_y_dst = nextCrossX_y-y1
-		nextCrossXdstS = distanceToX**2 + nextCrossX_y_dst**2
-		#we dont care about the X crossing if we're already on this point.
-		if (nextCrossXdstS<=0): nextCrossXdstS = IGNORE_DISTANCE
+		if overallGradient < sys.float_info.max:
+			nextCrossX_y = overallGradient * nextCrossX + moveC
+			nextCrossX_y_dst = nextCrossX_y-y1
+			nextCrossXdstS = distanceToX**2 + nextCrossX_y_dst**2
+			#we dont care about the X crossing if we're already on this point.
+			if (nextCrossXdstS<=0): nextCrossXdstS = IGNORE_DISTANCE
+		else:
+			#In this case we're moving parallel to the Y axis so will never cross an X line.
+			nextCrossXdstS = IGNORE_DISTANCE
 
 		#print "will cross X-line at (%.2f,%.2f) in %.2f"%(nextCrossX,nextCrossX_y,math.sqrt(nextCrossXdstS))
 
 		#point it crosses a horizontal edge
-		nextCrossY_x = (nextCrossY-moveC)/overallGradient
-		nextCrossY_x_dst = nextCrossY_x-x1
-		nextCrossYdstS = distanceToY**2 + nextCrossY_x_dst**2
-		#we dont care about the Y crossing if we're already on this point.
-		if (nextCrossYdstS<=0): nextCrossYdstS = IGNORE_DISTANCE
+		if overallGradient != 0:
+			nextCrossY_x = (nextCrossY-moveC)/overallGradient
+			nextCrossY_x_dst = nextCrossY_x-x1
+			nextCrossYdstS = distanceToY**2 + nextCrossY_x_dst**2
+			#we dont care about the Y crossing if we're already on this point.
+			if (nextCrossYdstS<=0): nextCrossYdstS = IGNORE_DISTANCE
+		else:
+			#In this case we're moving parallel to the X axis so will never cross a Y line.
+			nextCrossYdstS = IGNORE_DISTANCE
+
 
 		#print "will cross Y-line at (%.2f,%.2f) in %.2f"%(nextCrossY_x,nextCrossY,math.sqrt(nextCrossYdstS))
 
@@ -432,6 +451,10 @@ def moveTo(x,y,z,e):
 		commitMove(moveToX,moveToY,zMove,eMove)
 
 		if done:
+			print "Total dist: %.2f		Segment Sum: %.2f"%(totalDistance, moveDst)
+			if (totalDistance - moveDst)>10**-6:
+				print "WARNING: broken maths detected! segments don't sum to whole length accurately."
+				quit()
 			print "moveTo done."
 			print
 			return
@@ -458,4 +481,8 @@ moveTo(1,1,0,2)
 moveTo(1,0.3,0,3)
 moveTo(1.65,2.9,2,2)
 moveTo(0,0,0,5)
+moveTo(2.8,0,0,10)
+moveTo(0.5,2.8,0,11)
+moveTo(0.5,0.5,0,12)
+moveTo(2.8,2.9,0,15)
 
