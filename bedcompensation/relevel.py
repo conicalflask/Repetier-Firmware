@@ -52,7 +52,7 @@ def mkTriangle(p1,p2,p3):
 
 	d = a * x1 + b * y1 + c * z1
 
-	pprint.pprint(locals())
+	#pprint.pprint(locals())
 	return Triangle(a,b,c,d);
 
 def loadProbeData():
@@ -207,7 +207,7 @@ def mappedZ(x,y,z):
 	else:
 		return getZatPoint(x,y) * (1-z/correctZByHeight) + z
 
-previousPointEMult = 0
+previousPointEMult = 1.0
 
 #emits the given dictionary as a gcode line on args.output
 def emit(codes):
@@ -249,13 +249,18 @@ def commitMove(x,y,z,e,travel,extras):
 	eRel = e-e1
 	eCompensated = eRel*moveEMult
 	#adjust destination e:
-	e = eCompensated+e1
+	toE = eCompensated+e1
+	if e<0:
+		print "negative E!"
+		pprint.pprint(locals())
+		quit()
 
-	print "Committing move from (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f (e%%:%.2f)"%(x1,y1,z1,x,y,z,e,moveEMult*100)
-	print "Actual z used: %.2f"%tZ
-	# if tZ>5:
-	# 	pprint.pprint(locals())
-	# 	quit() 
+	if moveEMult<0.5 or moveEMult>2:
+		print "moveEMult probably wrong: %.2f%%, gotoEMult: %.2f%%"%(moveEMult*100, gotoEMult*100)
+		pprint.pprint(locals())
+
+	#print "Committing move from (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f (e%%:%.2f)"%(x1,y1,z1,x,y,z,e,moveEMult*100)
+	#print "Actual z used: %.2f"%tZ
 	xdiff = x-x1
 	ydiff = y-y1
 
@@ -264,14 +269,12 @@ def commitMove(x,y,z,e,travel,extras):
 	global moveDst
 	moveDst = moveDst + dst
 
-	if xdiff!=0:
-		m=(y-y1)/(x-x1)
-		c = y1 - m*x1
-		print "Sanity check: y=%.2fx + %.2f		dist:%.2f"%(m,c,dst)
-	else:
-		print "Sanity check: virtical line"
-	
-
+	# if xdiff!=0:
+	# 	m=(y-y1)/(x-x1)
+	# 	c = y1 - m*x1
+	# 	print "Sanity check: y=%.2fx + %.2f		dist:%.2f"%(m,c,dst)
+	# else:
+	# 	print "Sanity check: virtical line"
 
 	currentPosition[0] = x
 	currentPosition[1] = y
@@ -281,8 +284,8 @@ def commitMove(x,y,z,e,travel,extras):
 	extras['Y'] = y;
 	extras['Z'] = tZ;
 	if not travel:
-		currentPosition[3] = e
-		extras['E'] = e;
+		currentPosition[3] = toE
+		extras['E'] = toE;
 
 	emit(extras)
 
@@ -295,7 +298,7 @@ def moveTo(to, travel, extras):
 	x1,y1,z1,e1 = currentPosition
 
 
-	print "Move requested from current position (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f"%(x1,y1,z1,x,y,z,e)
+	#print "Move requested from current position (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f"%(x1,y1,z1,x,y,z,e)
 
 	totalDistance = math.sqrt((x2-x1)**2 + (y2-y1)**2)
 	
@@ -306,18 +309,18 @@ def moveTo(to, travel, extras):
 	#fastpath:
 	if (totalDistance<FASTPATH_DISTANCE_SQR):
 		commitMove(x,y,z,e,travel, extras)
-		print "moveTo done. (fastpath)"
-		print
+		#print "moveTo done. (fastpath)"
+		#print
 		return
 
 	if x2-x1==0:
 		overallGradient = float("+inf")
-		print "Planned line eq: virtical line"
+		#print "Planned line eq: virtical line"
 		moveC = 0 #line equations are nonsense for this line
 	else:
 		overallGradient = (y2-y1)/(x2-x1)
 		moveC = y1-overallGradient*x1   # C value for line equation of this move.
-		print "Planned line eq: y=%.2fx + %.2f"%(overallGradient,moveC)
+		#print "Planned line eq: y=%.2fx + %.2f"%(overallGradient,moveC)
 
 	goesRight = x2>x1
 	goesUp = y2>y1
@@ -358,13 +361,13 @@ def moveTo(to, travel, extras):
 			nextCrossY = inboxY			
 
 		#point it crosses a virtical edge
-		if overallGradient < sys.float_info.max:
+		if abs(overallGradient) < sys.float_info.max:
 			nextCrossX_y = overallGradient * nextCrossX + moveC
 			nextCrossX_y_dst = nextCrossX_y-y1
 			nextCrossXdstS = distanceToX**2 + nextCrossX_y_dst**2
 			#we dont care about the X crossing if we're already on this point.
 			if (nextCrossXdstS<=0): nextCrossXdstS = IGNORE_DISTANCE
-			print "will cross X-line at (%.2f,%.2f) in %.2f"%(nextCrossX,nextCrossX_y,math.sqrt(nextCrossXdstS))
+			#print "will cross X-line at (%.2f,%.2f) in %.2f"%(nextCrossX,nextCrossX_y,math.sqrt(nextCrossXdstS))
 		else:
 			#In this case we're moving parallel to the Y axis so will never cross an X line.
 			nextCrossXdstS = IGNORE_DISTANCE
@@ -372,12 +375,18 @@ def moveTo(to, travel, extras):
 		
 		#point it crosses a horizontal edge
 		if overallGradient != 0:
-			nextCrossY_x = (nextCrossY-moveC)/overallGradient
+			if abs(overallGradient) < sys.float_info.max:
+				#normal non-infinite gradient
+				nextCrossY_x = (nextCrossY-moveC)/overallGradient
+			else:
+				#infinite gradient means a move without chaning X value.
+				#(the move is parallel to Y-axis)
+				nextCrossY_x = x1
 			nextCrossY_x_dst = nextCrossY_x-x1
 			nextCrossYdstS = distanceToY**2 + nextCrossY_x_dst**2
 			#we dont care about the Y crossing if we're already on this point.
 			if (nextCrossYdstS<=0): nextCrossYdstS = IGNORE_DISTANCE
-			print "will cross Y-line at (%.2f,%.2f) in %.2f"%(nextCrossY_x,nextCrossY,math.sqrt(nextCrossYdstS))
+			#print "will cross Y-line at (%.2f,%.2f) in %.2f"%(nextCrossY_x,nextCrossY,math.sqrt(nextCrossYdstS))
 		else:
 			#In this case we're moving parallel to the X axis so will never cross a Y line.
 			nextCrossYdstS = IGNORE_DISTANCE
@@ -448,45 +457,42 @@ def moveTo(to, travel, extras):
 			#we dont care about the D crossing if we're already on this point.
 			if (nextCrossDdstS<=0): nextCrossDdstS = IGNORE_DISTANCE
 
-			print "will cross D-line at (%.2f,%.2f) in %.2f"%(nextCrossD_x,nextCrossD_y,math.sqrt(nextCrossDdstS))
+			#print "will cross D-line at (%.2f,%.2f) in %.2f"%(nextCrossD_x,nextCrossD_y,math.sqrt(nextCrossDdstS))
 		else:
 			#parallel to this line so no distance to intercept.
 			nextCrossDdstS = IGNORE_DISTANCE
 
 
 		targetDstS = (x2-x1)**2 + (y2-y1)**2
-		print "target is %.2f away."%math.sqrt(targetDstS);
+		#print "target is %.2f away."%math.sqrt(targetDstS);
 
-		#closest = min(nextCrossXdstS,nextCrossYdstS,nextCrossDdstS,targetDstS);
-		closest = min(nextCrossDdstS,targetDstS);
+		closest = min(nextCrossXdstS,nextCrossYdstS,nextCrossDdstS,targetDstS);
 
-		#closest = targetDstS
-
-		print "closest crossing is %.2f far away."%math.sqrt(closest)
+		#print "closest crossing is %.2f far away."%math.sqrt(closest)
 
 		done = False
 		if closest==targetDstS:
-			print "moving to the target",
+			#print "moving to the target",
 			moveToX = x2
 			moveToY = y2
 			done = True
 		elif nextCrossXdstS==closest:
-			print "moving to the next X-crossing",
+			#print "moving to the next X-crossing",
 			moveToX = nextCrossX
 			moveToY = nextCrossX_y
 		elif nextCrossYdstS==closest:
-			print "moving to the next Y-crossing",
+			#print "moving to the next Y-crossing",
 			moveToX = nextCrossY_x
 			moveToY = nextCrossY
 		elif nextCrossDdstS==closest:
-			print "moving to the next D-crossing",
+			#print "moving to the next D-crossing",
 			moveToX = nextCrossD_x
 			moveToY = nextCrossD_y
 
 		#do not set moveToX/moveToY by default to fail fast if none matched.
 
 
-		print "at (%.2f,%.2f)"%(moveToX,moveToY)
+		#print "at (%.2f,%.2f)"%(moveToX,moveToY)
 
 		#How much of the remaining line is being consumed?
 		totalComplete += math.sqrt(closest)
@@ -502,12 +508,13 @@ def moveTo(to, travel, extras):
 		commitMove(moveToX,moveToY,zMove,eMove,travel,extras)
 
 		if done:
-			print "Total dist: %.2f		Segment Sum: %.2f"%(totalDistance, moveDst)
-			if (totalDistance - moveDst)>10**-6:
+			#print "Total dist: %.2f		Segment Sum: %.2f"%(totalDistance, moveDst)
+			if abs(totalDistance - moveDst)>10**-6:
 				print "WARNING: broken maths detected! segments don't sum to whole length accurately."
+				pprint.pprint(locals())
 				quit()
-			print "moveTo done."
-			print
+			#print "moveTo done."
+			#print
 			return
 
 	
@@ -523,12 +530,19 @@ def processGcode():
 
 	global currentPosition
 
+	nextReportZ = 0.0
+	passedCorrection = False
+
+	#this is to make sure we don't modify the first G0/1 as we don't know the position before this command.
+	#(we don't know where home is and don't want to know ideally)
+	firstMove = True
+
 	lineno = 0
 	#process the gcodes one by one
 	for inline in args.input.readlines():
 		lineno = lineno +1
-		#if lineno>400:
-		#	quit()
+		# if lineno>800+200+25+6:
+		# 	quit()
 		#figure out what this line means:
 		#Strip comments
 		pline = inline.upper().split(";")[0]
@@ -561,25 +575,47 @@ def processGcode():
 
 				dest = copy.copy(currentPosition)
 
+				moving = False
 				if 'X' in codes:
 					dest[0] = float(codes['X'])
+					moving = True
 				if 'Y' in codes:
 					dest[1] = float(codes['Y'])
+					moving = True
 				if 'Z' in codes:
 					dest[2] = float(codes['Z'])
+					moving = True
 				if 'E' in codes:
 					dest[3] = float(codes['E'])
 					travel = False
 				else:
 					travel = True
 
+				if not travel and not moving:
+					print "E-only"
+					#E-only move
+					currentPosition[3] = dest[3]
+					out.write(inline)
+					continue
+
+				if dest[2]>nextReportZ:
+					print "Now on Z: %d"%nextReportZ
+					if nextReportZ>correctZByHeight and not passedCorrection:
+						passedCorrection = True
+						print "Passed correction point."
+					nextReportZ = int(nextReportZ)+1.0
+
 				#superfastpath:
 				#Do we need to even think about this?
 				#If our Z is above the geometry mangling threshold then we can just emit the code as-is
-				if dest[2]>args.height and currentPosition[2]>args.height:
+				if (dest[2]>args.height and currentPosition[2]>args.height) or firstMove:
 					#everything's above the height so just write the line
 					out.write(inline)
-					quit()
+
+					#but we do need to update our idea of position though :)
+					currentPosition = dest
+
+					firstMove = False;
 				else:
 					#Make sure interesting bonus codes (and the command code) are still included:
 					extras = copy.copy(codes)
@@ -587,14 +623,14 @@ def processGcode():
 					for tdel in ['X','Y','Z','E']:
 						if tdel in extras:
 							del extras[tdel]
+
 					#slowpath... Must rewrite this move.
-					print inline
 					moveTo(dest, travel, extras)
 					#If the gcode requested an E-move and we modified the extrusion amount
 					#then now is a good time to let the firmware know the 'expected' value
 					if not travel:
 						if currentPosition[3]!=dest[3]:
-							print "Realigning E position from %.3f to %.3f"%(currentPosition[3], dest[3])
+							#print "Realigning E position from %.3f to %.3f"%(currentPosition[3], dest[3])
 							currentPosition[3] = dest[3]
 							out.write("G92 E%.5f ; relevel.py \n"%(currentPosition[3]))
 
@@ -617,6 +653,7 @@ parser.add_argument('-z','--height', type=int, default=5, help='the z-height whe
 args = parser.parse_args()
 
 correctZByHeight = args.height
+correctZByHeight = 5
 
 #load and process probe data
 loadProbeData()
