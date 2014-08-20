@@ -434,7 +434,8 @@ def moveTo(to, travel, extras):
 				diagYintercept = diagYintercept + probespacing
 
 			nextCrossD_x = (diagYintercept-moveC) / (overallGradient+1)
-			nextCrossD_y = overallGradient * nextCrossD_x + moveC
+			#use the D-line equation as it's guaranteed to be sensible but the moveTo line might have a stupid graident.
+			nextCrossD_y = -1 * nextCrossD_x + diagYintercept
 			ncd_dx = (nextCrossD_x-x1)
 			ncd_dy = (nextCrossD_y-y1)
 			#make sure we only accept line crossings in the direction we're going.
@@ -481,6 +482,8 @@ def moveTo(to, travel, extras):
 			print "moving to the next D-crossing",
 			moveToX = nextCrossD_x
 			moveToY = nextCrossD_y
+
+		#do not set moveToX/moveToY by default to fail fast if none matched.
 
 
 		print "at (%.2f,%.2f)"%(moveToX,moveToY)
