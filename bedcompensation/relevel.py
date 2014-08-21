@@ -14,7 +14,7 @@ UNDEFINED_POINT = -99.0
 DISABLED_ZHEIGHT = 10000
 IGNORE_DISTANCE = 999999
 #moves smaller than this will just go straight to their destination without cutting
-FASTPATH_DISTANCE_SQR = 0.1 #(mm^2)
+FASTPATH_DISTANCE_SQR = 10 #(mm^2)
 
 BASIC_GCODE_RE = re.compile("(([a-zA-Z])(-?[\d.]+))")
 
@@ -213,17 +213,29 @@ previousPointEMult = 1.0
 def emit(codes):
 	global args
 	out = args.output
+
+	codes = copy.copy(codes)
+
 	#make sure command codes go out first
 	firsts = ['G','M']
+	doneFirst = False
 	for l in firsts:
 		if l in codes:
 			out.write("%s%.5f "%(l,int(codes[l])))
 			del codes[l]
+			doneFirst = True
+
+	if not doneFirst:
+		print "Can't emit gcode without command!"
+		pprint.pprint(locals())
+		quit()
 
 	for k in codes.keys():
 		out.write("%s%.5f "%(k,float(codes[k])))
 	out.write("; relevelled\n");
 
+
+splitEPosition = 0
 
 #issues a gcode move to the requested x,y,z,e
 #
@@ -246,12 +258,15 @@ def commitMove(x,y,z,e,travel,extras):
 		previousPointEMult = gotoEMult
 
 	#now calculate sane e value:
+	#This is done by calculating the relative E for this move segment
+	#then scaling this inversely to the layer height modification 
+	#finally adding this new relative E to the last E position we emitted.
 	eRel = e-e1
 	eCompensated = eRel*moveEMult
-	#adjust destination e:
-	toE = eCompensated+e1
-	if e<0:
-		print "negative E!"
+	global splitEPosition
+	tE = eCompensated+splitEPosition
+	if eRel<0 and not travel:
+		print "Non-travel move with negative E!"
 		pprint.pprint(locals())
 		quit()
 
@@ -284,8 +299,9 @@ def commitMove(x,y,z,e,travel,extras):
 	extras['Y'] = y;
 	extras['Z'] = tZ;
 	if not travel:
-		currentPosition[3] = toE
-		extras['E'] = toE;
+		currentPosition[3] = e
+		splitEPosition = tE
+		extras['E'] = tE
 
 	emit(extras)
 
@@ -297,6 +313,8 @@ def moveTo(to, travel, extras):
 	x,y,z,e = to
 	x1,y1,z1,e1 = currentPosition
 
+	global splitEPosition
+	splitEPosition = e1
 
 	#print "Move requested from current position (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f"%(x1,y1,z1,x,y,z,e)
 
@@ -592,8 +610,7 @@ def processGcode():
 					travel = True
 
 				if not travel and not moving:
-					print "E-only"
-					#E-only move
+					#E-only move. It's important to emit these right away as they confuse the other logic. (They go negative, for example)
 					currentPosition[3] = dest[3]
 					out.write(inline)
 					continue
@@ -629,7 +646,7 @@ def processGcode():
 					#If the gcode requested an E-move and we modified the extrusion amount
 					#then now is a good time to let the firmware know the 'expected' value
 					if not travel:
-						if currentPosition[3]!=dest[3]:
+						if splitEPosition!=dest[3]:
 							#print "Realigning E position from %.3f to %.3f"%(currentPosition[3], dest[3])
 							currentPosition[3] = dest[3]
 							out.write("G92 E%.5f ; relevel.py \n"%(currentPosition[3]))
@@ -653,7 +670,6 @@ parser.add_argument('-z','--height', type=int, default=5, help='the z-height whe
 args = parser.parse_args()
 
 correctZByHeight = args.height
-correctZByHeight = 5
 
 #load and process probe data
 loadProbeData()
