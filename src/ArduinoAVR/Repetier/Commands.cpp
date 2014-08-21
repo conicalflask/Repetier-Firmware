@@ -787,6 +787,8 @@ void Commands::executeGCode(GCode *com)
                 Printer::moveToReal(0,0,BEDCOMPENSATION_PROBEHEIGHT,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
                 Printer::runZProbe(true,false);
 
+                float minSeen = 999.0;
+
                 for (float yProbe=meshOffsetY+BEDCOMPENSATION_MARGIN; yProbe<maxY+spacing; yProbe+=spacing) {
                     float xPoints[xProbePoints];
                     int onXPoint = 0;
@@ -811,7 +813,9 @@ void Commands::executeGCode(GCode *com)
                         if (allowed) {
                             //probe allowed!
                             Printer::moveToReal(xProbe,yProbe,BEDCOMPENSATION_PROBEHEIGHT,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
-                            xPoints[onXPoint++] = Printer::currentPosition[Z_AXIS]-Printer::runZProbe(false,false);
+                            float probe = Printer::currentPosition[Z_AXIS]-Printer::runZProbe(false,false);
+                            xPoints[onXPoint++] = probe;
+                            minSeen = fmin(minSeen,probe);
                         } else {
                             xPoints[onXPoint++] = BEDCOMPENSATION_INVALIDPOINT;
                         }
@@ -820,6 +824,8 @@ void Commands::executeGCode(GCode *com)
 
                     Com::printArrayFLN(Com::tProbeRow,xPoints,xProbePoints,3);
                 }
+
+                Com::printFLN(Com::tMinProbe,minSeen,3);
 
                 //Do a final prove to retract the probe if needed.
                 Printer::moveToReal(0,0,BEDCOMPENSATION_PROBEHEIGHT,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());

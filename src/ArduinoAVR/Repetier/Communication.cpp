@@ -366,6 +366,7 @@ FSTRINGVALUE(Com::tSDErrorCode,"SD errorCode:")
 #ifdef BEDCOMPENSATION
 FSTRINGVALUE(Com::tMeshParams,"Mesh parameters:")
 FSTRINGVALUE(Com::tProbeRow,"Probe row:")
+FSTRINGVALUE(Com::tMinProbe,"Minimum probed height:")
 #endif
 
 void Com::printWarningF(FSTRINGPARAM(text)) {

@@ -353,6 +353,7 @@ FSTRINGVAR(tSDErrorCode)
 #ifdef BEDCOMPENSATION
 FSTRINGVAR(tMeshParams)
 FSTRINGVAR(tProbeRow)
+FSTRINGVAR(tMinProbe)
 #endif
 
 static void printNumber(uint32_t n);
