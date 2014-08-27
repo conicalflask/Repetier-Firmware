@@ -1,3 +1,75 @@
+# CF-Repetier - Repetier with automatic bed compensation!
+
+** Note: This is a work in progress. The proof of concept has been completed (relevel.py)
+and works! Now the algorithm is being integrated into Repetier for fully automatic compensation. **
+
+## Who needs calibration!?
+
+We all do, but that doesn't mean we can't do more with imperfect printers and operators!
+
+Having a correctly levelled and flat print surface, and in the case of delta printers, correctly calibrated delta parameters is extremely important. Without a properly levelled and flat print surface it is impossible to print large objects as the first layer will either not stick properly, become scraped by the print head, or both.
+
+Proper physical print bed levelling is difficult and in many cases cannot be acheived. Specialist tools are required to determine that a surface is exactly perpendicular to the Z-axis and even more specialist expertise and equipment to correct this. It is not realistic to expect those building their own home 3D printer much less those buying off-the-shelf home 3D printers to have the tools or expertise to ensure a print surface is flat to within 1mm/m and level with the same tolerances. Excellent first layer quality requires this kind of precision.
+
+Both Marlin and Repetier have support for some basic mitigation techniques for printer imprecision.
+
+* Endstops to correct for inexact axis lengths and motions, allowing for reliable notions of where home is.
+* Automatic bed 'levelling'. Using a Z-probe the firmware probes the bed to determine the plane-equation for the bed. When printing the model is rotated to match the rotation of the print surface relative to the notional 'true bed'. This way even if the bed is not quite level with respect to the printer's Z-axis the first layer will still be correct. Marlin's implementation is somewhat better as it can perform 'detailed' probing of the print surface and then compute the plane of the bed that most accurately matches the observed probe data (using a least-squares approximation). Fundamentally Repetier does the same kind of correction (by rotating the print commands according to the known rotation of the print surface) but calculates the bed's plane-equation by probing only three points. While only three points are needed to derive a plane equation any error at all in the probed points is is amplified far away from the probe locations and does not cope with warped/non-flat print surfaces at all gracefully.
+* A variant of Marlin ([Here](https://github.com/RichCattell/Marlin)) also attemps to automatically calibrate some delta printer parameters using the z-probe. This depends on the assumption that the print suface is perfectly flat, the delta push rods are all equal length and the frame is square. Some of these assumptions are harder to deliver on than others.
+
+All of these techniques so far depend on a perfectly flat print surface even if it's a little unlevel. In many cases (and for both printers I've built) this turned out to be unreasonable. Here's a few reasons why:
+
+* Printed circuit boards as print beds are not flat at all.
+* Aluminium sheets (unless machined or lapped) are not very flat, especially if you were to buy cheap guillotined sheets from eBay. (Although aluminium is an excellent surface for heated print beds in other respects.)
+* Even with a perfectly flat surface such as a glass sheet, some printers with a moving bed may still have an effectively curved surface if the linear motion guides for the bed are not parallel to one another. (So the left of the bed is higher than the right at the endstop but the right side higher when at the full opposite position, for example)
+* With delta printers having an incorrect value for the 'delta radius' (the length of the horizontal edge of the right angle triangle formed where the delta push rods are the hypotenuse and the linear motion element is the virtical edge). In this case the printer will move in a bowl or dome shape when requested to move in purely X or Y. The perfect bed in this case would be exactly as curved as the bowl/dome error to ensure a good first layer. Of course it'd be best to have a a perfectly calibrated delta but it's not practical advice to say "Just be better". Sometimes and for complex reasons it's just not possible.
+
+## So what's this?
+
+This firmware will allow any printer with any geometric defect to print first layers perfectly. It does this by warping the requested print moves according to a detailed map of the print surface measured by the printer. This could (if you have imagination) even allow you to print onto deliberately curved surfaces for special applications. Importantly, this warps the print by the *measured* map of the bed, not the bed itself. This means even delta miscalibrations can be compensated for.
+
+There's no such thing as a free lunch. The less flat, less level the print surface is the more distortion must be introduced to follow the print surface. This will reduce the accuracy of the print. Likewise, if this is used to correct for a badly calibrated delta the resulting print geometry will not necessarily be true and mau have other exciting artefacts and wonk.
+
+On a perfect printer, prints using this firmware won't be any different but on an imperfect printer it's the difference between frustration of popped-off prints, badly smashed beds, scraped first layers with poor finish quality, and a well printed (albeit inaccurate) object.
+
+BUT AT LEAST IT PRINTS.
+
+on any printer, no matter how badly setup. (almost)
+
+So what *must* be correct with my printer?
+
+* Extrusion, heating, etc are not considered here.
+* A working, reliable Z-probe is needed. An unreliable Z-probe will undermine this approach. A microswitch based Z-probe should be fine in almost all cases. It's also important to know the Z-offset of the probe relative to the extruder.
+* Sane motion; Steps per mm for each axis should be as close as possible to reality. This firmware won't work (just like any other) magically with wacky axis settings. For small errors this will probably only affect output geometric accuracy. Large errors and inconsistencies may entirely undermine this approach.
+* An idea of the magnitude of error in the printer. In principle very large errors can be compensated for, but it's much faster to perform the bed survey if you know ahead of time that the largest error is <5mm, for example. It is probably best to do some preliminary experiments (possibly with this firmware) to get an idea of the printer's z-height first to minimise easy to correct error.
+* Sharp bumps can't be corrected for. The sharpest correctable bumps are completely smooth and have a radius no smaller than the bed probe spacing parameter. (For example, a smooth bump fully 5cm across in the bed would need probe spacing absolutely no further apart than 25mm or so). This is the bare minimum spacing, or more appropriately the absolute minimum  size of the bumps/dents that are correctable. AVR-based arduinos simply don't have enough ram for much more detailed bed surveys, especially with large print beds. Additionally, more detailed bed surveys will require much more processing time during print for correction. This might be a problem for some printers with some AVRs (manifesting as slowdowns during print), but not with sensible settings. Maybe in the future we'll all use ARM-Arduinos.
+
+## Features in Firmware:
+
+Improvements over upstream:
+
+* P option added to G29 to probe in a single location at the current (x,y) rather than 3 points. This is useful for updating in EEPROM overall printer height based on a single reference rather than an average.
+* G35 implemented to perform a bed survey. This will probe the bed in a grid pattern and emit a map of the Z-offsets at each probed point.
+* (in progress) G36 to perform a bed survey, generate a compensation mesh in RAM and enable bed compensation.
+* M{TBD} Sx to enable/disable/reset bed compensation.
+
+When bed compensation is enabled all move G-codes will be adjusted by the printer to be correct relative to the Z-offset of the print bed at the current (x,y) point.
+
+Until the firmware modification is complete the python script 'relevel.py' provides a proof of concept for this idea. Use G35 on the printer to produce a map of the bed and then relevel.py can reprocess any input gcode to perfectly sit on top of the print surface. This is a little awkward but works a treat and is fine to do until the firmware supports it transparently.
+
+What needs configuring?
+
+* An appropriate probe spacing. 30mm seems sensible to me, quite detailed but also will fit into RAM on an Arduino Mega 2560.
+* An allowable distortion factor. The distortion factor is the maximum change in layer height the firmware can make in order to gradually correct a print. The idea is that even if a print starts very distorted for the print bed, it will eventually correct and become completely true again. (assuming other print parameters are correct). This value ranges from 0 (meaning never modify layer height, so the whole print is distorted.) to 1 (meaning that layers can be completely removed if needed to correct print geometry as fast as possible.). A value of 0.5 seems sensible meaning that some areas can be compressed by up to 50% to gradually correct print geometry. If the maximum bed deviation found during the survey was found to be 2mm, and the distortion factor is 0.5 then the print will have true geometry by Z=4mm. For printers with perfect surfaces but bad delta prameters a value of 0 is probably sensible.
+* Your printers Z-height should be set such that no point on the bed has a negative Z offset. This is to avoid the G-code re-writer engine asking for moves to Z<0 positions which may hit software endstops and ignore the move. This will be done automatically during a G36 if requested.
+
+Anything else?
+
+Bed compensation is volatile and should be done immediately before any print and ideally while everything is hot. Especially with heated PCB surfaces the curvature is highly temperature sensitive. This is just acheived by performing adding a "G36 S1" command to your preamble gcode in your slicer after preheating your extruder and bed, failing this, just adding this to your printers startup gcode will probably be good enough and save time for each print.
+
+## ... Below is from from Repetier Firmware...
+
+
 # Repetier-Firmware - the fast and user friendly firmware
 
 ## Installation
@@ -10,6 +82,7 @@ the configuration.
 ## Version 0.91 released 2013-12-30
 
 Improvements over old code:
+
 * Works with CodeBlocks for Arduino http://www.arduinodev.com/codeblocks/#download
   which can replace the ArduinoIDE with a much better one on windows systems. Load the
   Repetier.cdb project file for this.
