@@ -11,9 +11,9 @@ Having a correctly levelled and flat print surface, and in the case of delta pri
 
 Proper physical print bed levelling is difficult and in many cases cannot be acheived. Specialist tools are required to determine that a surface is exactly perpendicular to the Z-axis and even more specialist expertise and equipment to correct this. It is not realistic to expect those building their own home 3D printer much less those buying off-the-shelf home 3D printers to have the tools or expertise to ensure a print surface is flat to within 1mm/m and level with the same tolerances. Excellent first layer quality requires this kind of precision.
 
-Both Marlin and Repetier have support for some basic mitigation techniques for printer imprecision.
+Both Marlin and Repetier support some basic techniques to mitigate printer imprecision.
 
-* Endstops to correct for inexact axis lengths and motions, allowing for reliable notions of where home is.
+* Endstops to provide a reliable idea of where home is even if the axis are not exactly the designed lengths, or if an axis has missed steps in the past.
 * Automatic bed 'levelling'. Using a Z-probe the firmware probes the bed to determine the plane-equation for the bed. When printing the model is rotated to match the rotation of the print surface relative to the notional 'true bed'. This way even if the bed is not quite level with respect to the printer's Z-axis the first layer will still be correct. Marlin's implementation is somewhat better as it can perform 'detailed' probing of the print surface and then compute the plane of the bed that most accurately matches the observed probe data (using a least-squares approximation). Fundamentally Repetier does the same kind of correction (by rotating the print commands according to the known rotation of the print surface) but calculates the bed's plane-equation by probing only three points. While only three points are needed to derive a plane equation any error at all in the probed points is is amplified far away from the probe locations and does not cope with warped/non-flat print surfaces at all gracefully.
 * A variant of Marlin ([Here](https://github.com/RichCattell/Marlin)) also attemps to automatically calibrate some delta printer parameters using the z-probe. This depends on the assumption that the print suface is perfectly flat, the delta push rods are all equal length and the frame is square. Some of these assumptions are harder to deliver on than others.
 
@@ -28,7 +28,7 @@ All of these techniques so far depend on a perfectly flat print surface even if 
 
 This firmware will allow any printer with any geometric defect to print first layers perfectly. It does this by warping the requested print moves according to a detailed map of the print surface measured by the printer. This could (if you have imagination) even allow you to print onto deliberately curved surfaces for special applications. Importantly, this warps the print by the *measured* map of the bed, not the bed itself. This means even delta miscalibrations can be compensated for.
 
-There's no such thing as a free lunch. The less flat, less level the print surface is the more distortion must be introduced to follow the print surface. This will reduce the accuracy of the print. Likewise, if this is used to correct for a badly calibrated delta the resulting print geometry will not necessarily be true and mau have other exciting artefacts and wonk.
+There's no such thing as a free lunch. The less flat, less level the print surface is the more distortion must be introduced to follow the print surface. This will reduce the accuracy of the print. Likewise, if this is used to correct for a badly calibrated delta the resulting print geometry will not necessarily be true and may have other exciting artefacts and wonk.
 
 On a perfect printer, prints using this firmware won't be any different but on an imperfect printer it's the difference between frustration of popped-off prints, badly smashed beds, scraped first layers with poor finish quality, and a well printed (albeit inaccurate) object.
 
@@ -52,6 +52,7 @@ Improvements over upstream:
 * G35 implemented to perform a bed survey. This will probe the bed in a grid pattern and emit a map of the Z-offsets at each probed point.
 * (in progress) G36 to perform a bed survey, generate a compensation mesh in RAM and enable bed compensation.
 * M{TBD} Sx to enable/disable/reset bed compensation.
+* NOT AN IMPROVEMENT: G-code arcs are not supported (and will be disabled) do not use them!
 
 When bed compensation is enabled all move G-codes will be adjusted by the printer to be correct relative to the Z-offset of the print bed at the current (x,y) point.
 
@@ -66,6 +67,17 @@ What needs configuring?
 Anything else?
 
 Bed compensation is volatile and should be done immediately before any print and ideally while everything is hot. Especially with heated PCB surfaces the curvature is highly temperature sensitive. This is just acheived by performing adding a "G36 S1" command to your preamble gcode in your slicer after preheating your extruder and bed, failing this, just adding this to your printers startup gcode will probably be good enough and save time for each print.
+
+## How does this work?
+
+1. Use "G36 S1" to perform a detailed survey of the print bed. This is done by probing the bed in a grid pattern according to the configured probe spacing. If a probed point is outside the reachable area (such as the corners of a printer with a circular build surface) then the closest (x,y) grid point that is within the build ares is used.
+2. The Z-height of the printer is adjusted so that the lowest probed point becomes the 0mm on the Z-axis. (So if the lowest probed point were -1.5mm then the Z-height of the printer is increased by 1.5mm)
+3. Using the probe points a mesh of right angle triangles is constructed to represent the height map of the bed. The plane equation coefficients for each trianglular section are stored in RAM for use during moves. Bed compensation is now enabled and will affect all G0 and G1 moves now.
+4. When a G0/G1 is issued the start and end Z positions are considered, if they're above the point where all print distortion has been corrected then the gcode is passed onto the planner as usual.
+5. If the Z-height needs correcting then it is calculated by looking up height of the bed at position (x,y) and then calculating the appropriate height for the requested Z position. If the layer is compressed or expanded then the extrusion amount is also adjusted to ensure the same overall extrusion 'density'.
+6. Long moves are cut into smaller sections to make sure that even single moves can still follow the contours of the print surface. Moves shorter than ~~3mm are always done as one section. If the move is split the split boundaries occur exactly on the edges of the bed height mesh. This could also be thought of as when the line representing the move crosses from one triangle of the mesh to another.
+7. Move G-codes that were altered are fed into the planner in the same way as without the compensation stage. This means compensation can be used at the same time as normal bed autolevelling, and also that the planner can pick appropriate accelerations after accounting for the z-moves over the bed 'terrain'. It also means that an LCD connected to the printer will show the position after adjustment for the bed topology, not the input gcode positions.
+
 
 ## ... Below is from from Repetier Firmware...
 
