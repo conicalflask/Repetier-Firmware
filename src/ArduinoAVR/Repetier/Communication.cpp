@@ -367,6 +367,18 @@ FSTRINGVALUE(Com::tSDErrorCode,"SD errorCode:")
 FSTRINGVALUE(Com::tMeshParams,"Mesh parameters:")
 FSTRINGVALUE(Com::tProbeRow,"Probe row:")
 FSTRINGVALUE(Com::tMinProbe,"Minimum probed height:")
+FSTRINGVALUE(Com::tMeshSize,"Print surface mesh size (bytes):")
+FSTRINGVALUE(Com::tMeshFailedRAM,"Not enough RAM for mesh:")
+FSTRINGVALUE(Com::tMesh,"Mesh:")
+FSTRINGVALUE(Com::tMeshTriangle,"Tidx:")
+FSTRINGVALUE(Com::tMeshA,"A")
+FSTRINGVALUE(Com::tMeshB,"B")
+FSTRINGVALUE(Com::tMeshC,"C")
+FSTRINGVALUE(Com::tMeshD,"D")
+FSTRINGVALUE(Com::tBedCompensationActive,"Bed compensation activated.")
+FSTRINGVALUE(Com::tMeshOffsetTooLarge, "Bed Z-offset too large, retrying. Offset: ")
+FSTRINGVALUE(Com::tMeshFailedOffset, "Failed to create bed surface mesh because the Z-offset is too large and couldn't be corrected.")
+
 #endif
 
 void Com::printWarningF(FSTRINGPARAM(text)) {

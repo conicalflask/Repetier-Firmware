@@ -354,6 +354,17 @@ FSTRINGVAR(tSDErrorCode)
 FSTRINGVAR(tMeshParams)
 FSTRINGVAR(tProbeRow)
 FSTRINGVAR(tMinProbe)
+FSTRINGVAR(tMeshSize)
+FSTRINGVAR(tMeshFailedRAM)
+FSTRINGVAR(tMesh)
+FSTRINGVAR(tMeshTriangle)
+FSTRINGVAR(tMeshA)
+FSTRINGVAR(tMeshB)
+FSTRINGVAR(tMeshC)
+FSTRINGVAR(tMeshD)
+FSTRINGVAR(tBedCompensationActive)
+FSTRINGVAR(tMeshOffsetTooLarge)
+FSTRINGVAR(tMeshFailedOffset)
 #endif
 
 static void printNumber(uint32_t n);

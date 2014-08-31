@@ -155,6 +155,36 @@ int8_t Printer::motorY;
 int debugWaitLoop = 0;
 #endif
 
+#ifdef BEDCOMPENSATION
+
+    //The X axis position in mm of the first mesh probe point
+    float Printer::meshOffsetX;
+
+    //The Y axis position in mm of the first mesh probe point
+    float Printer::meshOffsetY;
+
+    //The distance between probe points in mm
+    float Printer::meshSpacing;
+
+    //The number of mesh squares in a row of the mesh. It is assumed the mesh is square.
+    char Printer::meshWidth;
+
+    //The height at which the bed is probed.
+    float Printer::bedCompensationProbeHeight;
+
+    //The mesh (if constructed) of the print surface
+    struct meshTriangle* Printer::mesh = 0;
+
+    //The Z height in MM by which the geometry of the print is no longer distorted to match the bed 
+    float Printer::correctedByZ;
+
+    //The maximum Z offset of all probed points. This is used if M336 is used to readjust bed compensation parameters.
+    float Printer::maxProbedZ;
+
+    //The status of the bed compensation system. 0 is disabled.
+    char Printer::bedCompensationStatus = 0 ;
+
+#endif
 
 
 void Printer::constrainDestinationCoords()
@@ -1403,5 +1433,222 @@ void Printer::buildTransformationMatrix(float h1,float h2,float h3)
     Com::printArrayFLN(Com::tInfo,autolevelTransformation,9,5);
 }
 #endif
+
+#endif
+
+
+#ifdef BEDCOMPENSATION
+
+/**
+ * Deallocates the bed mesh releasing the memory used.
+ */
+void Printer::freeBedMesh() {
+    if (Printer::mesh) {
+        free(Printer::mesh);
+        Printer::mesh = 0;
+    }
+}
+
+/* 
+ * Probes the bed at the given mesh coords but doesn't do any checking at all!
+ */
+float probeBedAtReal(char meshX, char meshY) {
+    float xProbe = meshX*Printer::meshSpacing + Printer::meshOffsetX + BEDCOMPENSATION_MARGIN;
+    float yProbe = meshY*Printer::meshSpacing + Printer::meshOffsetY + BEDCOMPENSATION_MARGIN;
+    
+    Printer::moveToReal(xProbe,yProbe,Printer::bedCompensationProbeHeight,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
+    return Printer::currentPosition[Z_AXIS]-Printer::runZProbe(false,false);
+}
+
+/**
+ * Returns 1 if the mesh coords are probe-able.
+ */
+char isMeshLocationProbeable(char meshX, char meshY) {
+    float xProbe = meshX*Printer::meshSpacing + Printer::meshOffsetX + BEDCOMPENSATION_MARGIN;
+    float yProbe = meshY*Printer::meshSpacing + Printer::meshOffsetY + BEDCOMPENSATION_MARGIN;
+
+    char ret = 1;
+
+    #if DRIVE_SYSTEM == 3
+        float xDist = xProbe-EEPROM::zProbeXOffset();
+        float yDist = yProbe-EEPROM::zProbeYOffset();
+        xDist = xDist*xDist + BEDCOMPENSATION_MARGIN*BEDCOMPENSATION_MARGIN;
+        yDist = yDist*yDist + BEDCOMPENSATION_MARGIN*BEDCOMPENSATION_MARGIN;
+        ret &= (xDist+yDist <= Printer::deltaMaxRadiusSquared);
+    #endif // DRIVE_SYSTEM
+
+    return ret;
+
+}
+
+/**
+ * Probes the bed at the requested X, Y mesh coordinates.
+ * If the requested location is impossible it will probe the closest point (that is a mesh point) that is possible.
+ *
+ * This couldn't really be much less efficient but I don't care. Efficiency is always tomorrow's problem, function is today's.
+ */
+float probeBedAt(char meshX, char meshY) {
+    char closestX;
+    char closestY;
+    float closestDstSqr = 999999.9;
+    for (char tY = 0; tY < Printer::meshWidth+1; tY++) {
+        for (char tX = 0; tX < Printer::meshWidth+1; tX++) {
+            if (isMeshLocationProbeable(tX,tY)) {
+                float dstSqr = (meshX-tX)*(meshX-tX) + (meshY-tY)*(meshY-tY);
+                if (dstSqr < closestDstSqr) {
+                    closestDstSqr = dstSqr;
+                    closestX = tX;
+                    closestY = tY;
+                }
+            }
+        }
+    }
+
+    return probeBedAtReal(closestX,closestY);
+
+}
+
+struct meshTriangle mkTriangle(float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3) {
+    //v1 = [x3 - x1, y3 - y1, z3 - z1]
+    float v1[3] = {x3 - x1, y3 - y1, z3 - z1};
+
+    //v2 = [x2 - x1, y2 - y1, z2 - z1]
+    float v2[3] = {x2 - x1, y2 - y1, z2 - z1};
+
+    //cp = [v1[1] * v2[2] - v1[2] * v2[1],
+    //      v1[2] * v2[0] - v1[0] * v2[2],
+     //     v1[0] * v2[1] - v1[1] * v2[0]]
+
+    float cp[3] = {v1[1] * v2[2] - v1[2] * v2[1],
+                   v1[2] * v2[0] - v1[0] * v2[2],
+                   v1[0] * v2[1] - v1[1] * v2[0]};
+
+    //got the normal, now normalize it:
+    float magnitude = sqrt(cp[0]*cp[0]
+                          +cp[1]*cp[1]
+                          +cp[2]*cp[2]);
+
+    cp[0] = cp[0]/magnitude;
+    cp[1] = cp[1]/magnitude;
+    cp[2] = cp[2]/magnitude;
+    //the normal is now normalized.
+    float a = cp[0], b = cp[1], c = cp[2];
+
+    float d = a * x1 + b * y1 + c * z1;
+
+    struct meshTriangle tri;
+
+    tri.A = a;
+    tri.B = b;
+    tri.C = c;
+    tri.D = d;
+
+    return tri;
+}
+
+/**
+ * builds a bed mesh returning the smallest Z seen.
+ * This will update maxProbedZ
+ */
+float buildBedMesh0() {
+
+    float minSeenZ = 99999.9;
+    Printer::maxProbedZ = -99999.9;
+
+    float previousRow[Printer::meshWidth+1];
+    float currentRow[Printer::meshWidth+1];
+
+    unsigned int onTriangle = 0;
+
+    for (char tY = 0; tY < Printer::meshWidth+1; tY++) {
+
+        //Capture the current row:
+        for (char tX = 0; tX < Printer::meshWidth+1; tX++) {
+            previousRow[tX] = currentRow[tX];
+            float probed = currentRow[tX] = probeBedAt(tX,tY);
+            minSeenZ = fmin(minSeenZ,probed);
+            Printer::maxProbedZ = fmax(Printer::maxProbedZ, probed);
+        }
+
+        //Build triangles for this row:
+        if (tY>0) { //Don't build triangles if we've only probed one row. There's not enough probe points yet.
+            for (char tX = 1; tX < Printer::meshWidth+1; tX++) {
+                //triangle A: (pX-1,pY),(pX-1,pY-1),(pX,pY-1)
+                Printer::mesh[onTriangle] = mkTriangle(tX-1, tY, currentRow[tX-1],
+                                                       tX-1, tY-1, previousRow[tX-1],
+                                                       tX, tY-1, previousRow[tX]);
+
+                //Add triangle B: (pX-1,pY),(pX,pY),(pX,pY-1)
+                Printer::mesh[onTriangle] = mkTriangle(tX-1, tY, currentRow[tX-1],
+                                                       tX, tY, currentRow[tX],
+                                                       tX, tY-1, previousRow[tX]);
+                onTriangle += 2;
+            }
+        }
+    }
+
+    return minSeenZ;
+}
+
+/**
+ * Generates a print surface mesh. Returns 0 for success, otherwise failure (probably memory allocation failure.)
+ */
+char Printer::buildBedMesh() {
+    int meshBufferSize = sizeof(struct meshTriangle)*Printer::meshWidth*Printer::meshWidth*2;
+    Com::printFLN(Com::tMeshSize, meshBufferSize);
+
+    Printer::mesh = (struct meshTriangle*)malloc(meshBufferSize);
+
+    if (!Printer::mesh) {
+        //Report mesh failed (error code 1)
+        Com::printFLN(Com::tMeshFailedRAM, 1);
+        return 1;
+    }
+
+    Com::printNumber(sizeof(meshTriangle));
+    Com::println();
+    Com::printNumber(Printer::meshWidth);
+    Com::println();
+    Com::printNumber((int)meshBufferSize);
+    Com::println();
+    Com::printNumber((int)mesh);
+    Com::println();
+
+    Commands::checkFreeMemory();
+    Commands::writeLowestFreeRAM();
+
+
+    //1st attempt at building the mesh:
+    float minSeen = buildBedMesh0();
+    if (minSeen<0 || minSeen>BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION) {
+        //The mesh was too far offset so attempt again:
+        Com::printFLN(Com::tMeshOffsetTooLarge, minSeen);
+
+
+        //Update zLength of the printer to account for the lowest probed point.
+        Printer::updateCurrentPosition();
+        Printer::zLength -= minSeen;
+        Printer::updateDerivedParameter();
+        Printer::homeAxis(true,true,true);
+
+        float minSeen = buildBedMesh0();
+        if (minSeen<0 || minSeen>BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION) {
+            Com::printFLN(Com::tMeshFailedOffset);
+            return 2;
+        }
+    }
+
+    Com::printFLN(Com::tMesh);
+    for (int i = 0; i<(Printer::meshWidth*Printer::meshWidth)*2; i++) {
+        Com::printF(Com::tMeshTriangle, i);
+        Com::printF(Com::tMeshA, Printer::mesh[i].A);
+        Com::printF(Com::tMeshB, Printer::mesh[i].B);
+        Com::printF(Com::tMeshC, Printer::mesh[i].C);
+        Com::printFLN(Com::tMeshD, Printer::mesh[i].D);
+    }
+
+    //Success!
+    return 0;
+}
 
 #endif

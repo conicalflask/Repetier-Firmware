@@ -761,7 +761,7 @@ void Commands::executeGCode(GCode *com)
                  NOTE: make sure this command is run with the same autolevelling settings that would be used for the print!
     			 */
     				
-    			float spacing = 30.0;
+    			float spacing = BEDCOMPENSATION_DEFAULT_SPACING;
     			if (com->hasP()) spacing = com->P;
     			
                 float maxX,maxY;
@@ -832,7 +832,62 @@ void Commands::executeGCode(GCode *com)
                 Printer::runZProbe(false,true);
 			}
 			break;
-#endif
+        case 36:    //G36 Perform detailed bed survey and generate a mesh of the print surface.
+            /**
+        
+            Running this command will always overwrite the in-memory print surface mesh,
+            and related bed compensation parameters.
+
+            */
+            {
+
+
+                //0: Gather preliminaries and setup basic parameters:
+
+                if (com->hasP()) {
+                    Printer::meshSpacing = com->P;
+                } else {
+                    Printer::meshSpacing = BEDCOMPENSATION_DEFAULT_SPACING;
+                }
+
+                Printer::bedCompensationProbeHeight = BEDCOMPENSATION_PROBEHEIGHT;
+                if (com->hasZ()) Printer::bedCompensationProbeHeight = com->Z;
+
+                float maxX, maxY;
+
+                #if DRIVE_SYSTEM==3
+                    float radius = EEPROM::deltaMaxRadius();
+                    maxX = maxY = radius;
+                    Printer::meshOffsetX = Printer::meshOffsetY = -radius;
+                #else
+                    maxX = X_MAX_LENGTH;
+                    maxY = Y_MAX_LENGTH;
+                    Printer::meshOffsetY=Printer::meshOffsetX=0.0;
+                #endif
+
+                Printer::meshWidth = (char)(( (maxX+Printer::meshSpacing) - (Printer::meshOffsetX+BEDCOMPENSATION_MARGIN) )/Printer::meshSpacing);
+
+                //1: clear old mesh if it exists
+                Printer::freeBedMesh();
+
+                //2: Generate a fresh mesh. (possibly more than once if Z is WAY off)
+                if (Printer::buildBedMesh()) {
+                    //error :(
+                    //not sure what to do. I guess nothing.
+                } else {
+                    //3: Make sure correctedByZ is setup.
+
+                     //4: setup flags so that the mesh is now in use (if requested by S parameter)
+                    if (com->hasS() && com->S>0) Printer::bedCompensationStatus = 1;
+
+                    Com::printFLN(Com::tBedCompensationActive);
+                }
+
+            }
+            break;
+#endif //BEDCOMPENSATION
+
+
         case 90: // G90
             Printer::relativeCoordinateMode = false;
             break;

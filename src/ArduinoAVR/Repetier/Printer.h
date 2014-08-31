@@ -27,6 +27,12 @@ union floatLong {
     long l;
 };
 
+#ifdef BEDCOMPENSATION
+    struct meshTriangle {
+        float A,B,C,D;
+    };
+#endif
+
 #define PRINTER_FLAG0_STEPPER_DISABLED      1
 #define PRINTER_FLAG0_SEPERATE_EXTRUDER_INT 2
 #define PRINTER_FLAG0_TEMPSENSOR_DEFECT     4
@@ -166,6 +172,22 @@ public:
 #ifdef DEBUG_REAL_JERK
     static float maxRealJerk;
 #endif
+
+#ifdef BEDCOMPENSATION
+    
+    static float meshOffsetX;
+    static float meshOffsetY;
+    static float meshSpacing;
+    static char meshWidth;
+    static struct meshTriangle* mesh;
+    static float correctedByZ;
+    static float bedCompensationProbeHeight;
+    static float maxProbedZ;
+    static char bedCompensationStatus;
+
+#endif
+
+
     static inline void setMenuMode(uint8_t mode,bool on) {
         if(on)
             menuMode |= mode;
@@ -658,10 +680,18 @@ public:
     static void GoToMemoryPosition(bool x,bool y,bool z,bool e,float feed);
 #endif
     static void zBabystep();
+
+#ifdef BEDCOMPENSATION
+    static void freeBedMesh();
+    static char buildBedMesh();
+#endif BEDCOMPENSATION 
+
 private:
     static void homeXAxis();
     static void homeYAxis();
     static void homeZAxis();
+
+
 };
 
 #endif // PRINTER_H_INCLUDED
