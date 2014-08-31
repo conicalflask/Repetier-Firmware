@@ -29,11 +29,14 @@
  
  Enabling this feature adds G35 to perform a detailed probe of the print bed.
  This map of the bed can then be used by a python script to transform gcode to match the bed perfectly.
- It is planned (if this works) to add transformation support to the firmware itself.
+ This also enables G36 and M336 for firmware hosted print correction.
  */
 #define BEDCOMPENSATION
 
 #ifdef BEDCOMPENSATION
+
+//Gcode Arcs are not supported with bed compensation enabled.
+#undef ARC_SUPPORT
 
 //The height all bed probes will start at.
 #define BEDCOMPENSATION_PROBEHEIGHT 5
@@ -42,5 +45,7 @@
 
 //This area close to the edge of the bed will not be probed (as it might go beyond the reachable area after rotation due to bed levelling)
 #define BEDCOMPENSATION_MARGIN 5
+
+#define BEDCOMPENSATION_DEFAULT_SPACING 30.0
 
 #endif
