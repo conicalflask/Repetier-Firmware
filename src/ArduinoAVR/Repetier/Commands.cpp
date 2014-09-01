@@ -887,12 +887,15 @@ void Commands::executeGCode(GCode *com)
                     Com::printFLN(Com::tCorrectedBy, Printer::correctedByZ, 2);
 
                      //4: setup flags so that the mesh is now in use (if requested by S parameter)
-                    if (com->hasS() && com->S>0) Printer::bedCompensationStatus = 1;
+                    if (com->hasS() && com->S>0) {
+                        Printer::bedCompensationStatus = 1;
+                        Com::printFLN(Com::tBedCompensationActive);
+                    }
+
 
                     if(com->hasS() && com->S == 2)
                         EEPROM::storeDataIntoEEPROM();
 
-                    Com::printFLN(Com::tBedCompensationActive);
                 }
 
             }
