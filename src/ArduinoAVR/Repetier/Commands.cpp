@@ -876,9 +876,21 @@ void Commands::executeGCode(GCode *com)
                     //not sure what to do. I guess nothing.
                 } else {
                     //3: Make sure correctedByZ is setup.
+                    if (com->hasJ()) {
+                        Printer::correctedByZ = com->J;
+                    } else if (com->hasI()) {
+                        Printer::correctedByZ = Printer::maxProbedZ * (2.0-com->I);
+                    } else {
+                        Printer::correctedByZ = Printer::maxProbedZ * (1.0+BEDCOMPENSATION_DEFAULT_DISTORTION);
+                    }
+
+                    Com::printFLN(Com::tCorrectedBy, Printer::correctedByZ, 2);
 
                      //4: setup flags so that the mesh is now in use (if requested by S parameter)
                     if (com->hasS() && com->S>0) Printer::bedCompensationStatus = 1;
+
+                    if(com->hasS() && com->S == 2)
+                        EEPROM::storeDataIntoEEPROM();
 
                     Com::printFLN(Com::tBedCompensationActive);
                 }

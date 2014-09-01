@@ -1574,15 +1574,14 @@ float buildBedMesh0() {
         if (tY>0) { //Don't build triangles if we've only probed one row. There's not enough probe points yet.
             for (char tX = 1; tX < Printer::meshWidth+1; tX++) {
                 //triangle A: (pX-1,pY),(pX-1,pY-1),(pX,pY-1)
-                Printer::mesh[onTriangle] = mkTriangle(tX-1, tY, currentRow[tX-1],
-                                                       tX-1, tY-1, previousRow[tX-1],
-                                                       tX, tY-1, previousRow[tX]);
+                Printer::mesh[onTriangle++] = mkTriangle(tX-1, tY, currentRow[tX-1],
+                                                         tX-1, tY-1, previousRow[tX-1],
+                                                         tX, tY-1, previousRow[tX]);
 
                 //Add triangle B: (pX-1,pY),(pX,pY),(pX,pY-1)
-                Printer::mesh[onTriangle] = mkTriangle(tX-1, tY, currentRow[tX-1],
-                                                       tX, tY, currentRow[tX],
-                                                       tX, tY-1, previousRow[tX]);
-                onTriangle += 2;
+                Printer::mesh[onTriangle++] = mkTriangle(tX-1, tY, currentRow[tX-1],
+                                                         tX, tY, currentRow[tX],
+                                                         tX, tY-1, previousRow[tX]);
             }
         }
     }
@@ -1605,18 +1604,21 @@ char Printer::buildBedMesh() {
         return 1;
     }
 
-    Com::printNumber(sizeof(meshTriangle));
-    Com::println();
-    Com::printNumber(Printer::meshWidth);
-    Com::println();
-    Com::printNumber((int)meshBufferSize);
-    Com::println();
-    Com::printNumber((int)mesh);
-    Com::println();
+    // Com::printNumber(sizeof(meshTriangle));
+    // Com::println();
+    // Com::printNumber(Printer::meshWidth);
+    // Com::println();
+    // Com::printNumber((int)meshBufferSize);
+    // Com::println();
+    // Com::printNumber((int)mesh);
+    // Com::println();
 
     Commands::checkFreeMemory();
     Commands::writeLowestFreeRAM();
 
+    //deploy probe
+    Printer::moveToReal(0,0,Printer::bedCompensationProbeHeight,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
+    Printer::runZProbe(true,false);
 
     //1st attempt at building the mesh:
     float minSeen = buildBedMesh0();
@@ -1646,6 +1648,10 @@ char Printer::buildBedMesh() {
         Com::printF(Com::tMeshC, Printer::mesh[i].C);
         Com::printFLN(Com::tMeshD, Printer::mesh[i].D);
     }
+
+    //Retract probe:
+    Printer::moveToReal(0,0,Printer::bedCompensationProbeHeight,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
+    Printer::runZProbe(false,true);
 
     //Success!
     return 0;

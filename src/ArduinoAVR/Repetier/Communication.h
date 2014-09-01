@@ -365,6 +365,7 @@ FSTRINGVAR(tMeshD)
 FSTRINGVAR(tBedCompensationActive)
 FSTRINGVAR(tMeshOffsetTooLarge)
 FSTRINGVAR(tMeshFailedOffset)
+FSTRINGVAR(tCorrectedBy)
 #endif
 
 static void printNumber(uint32_t n);
