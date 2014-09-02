@@ -375,10 +375,13 @@ FSTRINGVALUE(Com::tMeshA,"  A")
 FSTRINGVALUE(Com::tMeshB,"  B")
 FSTRINGVALUE(Com::tMeshC,"  C")
 FSTRINGVALUE(Com::tMeshD,"  D")
-FSTRINGVALUE(Com::tBedCompensationActive,"Bed compensation activated.")
+FSTRINGVALUE(Com::tBedCompensation,"Bed compensation: ")
+FSTRINGVALUE(Com::tActivated,"enabled")
+FSTRINGVALUE(Com::tDeactivated,"disabled")
 FSTRINGVALUE(Com::tMeshOffsetTooLarge, "Bed Z-offset error too large, retrying. Offset: ")
 FSTRINGVALUE(Com::tMeshFailedOffset, "Failed to create bed surface mesh because the Z-offset is too large and couldn't be corrected.")
 FSTRINGVALUE(Com::tCorrectedBy, "Prints will be corrected by [mm]: ")
+FSTRINGVALUE(Com::tMeshCleared, "Bed mesh cleared.")
 #endif
 
 void Com::printWarningF(FSTRINGPARAM(text)) {

@@ -889,7 +889,8 @@ void Commands::executeGCode(GCode *com)
                      //4: setup flags so that the mesh is now in use (if requested by S parameter)
                     if (com->hasS() && com->S>0) {
                         Printer::bedCompensationStatus = 1;
-                        Com::printFLN(Com::tBedCompensationActive);
+                        Com::printF(Com::tBedCompensation);
+                        Com::printFLN(Com::tActivated);
                     }
 
 
@@ -1627,6 +1628,49 @@ void Commands::executeGCode(GCode *com)
             Commands::printCurrentPosition();
             break;
 #endif
+
+#ifdef BEDCOMPENSATION
+        case 336: //M336: configure auto bed compensation modes.
+        {
+            /**
+             * Supports I and J the same as G36
+             * S0 to disable bed compensation
+             * S1 to enable bed compensation
+             * S2 to clear the bed compensation matrix and free the memory used.
+             */
+
+            if (com->hasJ()) {
+                Printer::correctedByZ = com->J;
+                Com::printFLN(Com::tCorrectedBy, Printer::correctedByZ, 2);
+            } else if (com->hasI()) {
+                Printer::correctedByZ = Printer::maxProbedZ * (2.0-com->I);
+                Com::printFLN(Com::tCorrectedBy, Printer::correctedByZ, 2);
+            }
+
+
+            
+            if (com->hasS()) {
+                switch (com->S) {
+                    case 0:
+                        Printer::bedCompensationStatus = 0;
+                        break;
+                    case 1:
+                        if (Printer::mesh) Printer::bedCompensationStatus = 1;
+                        break;
+                    case 2:
+                        Printer::freeBedMesh();
+                        Printer::bedCompensationStatus = 0;
+                        Com::printFLN(Com::tMeshCleared);
+                        break;
+                }
+                Com::printF(Com::tBedCompensation);
+                Com::printFLN(Printer::bedCompensationStatus == 0 ? Com::tDeactivated : Com::tActivated);
+            }
+
+        }
+        break;
+#endif
+
 #ifdef DEBUG_QUEUE_MOVE
         case 533: // Write move data
             Com::printF(PSTR("Buf:"),(int)PrintLine::linesCount);

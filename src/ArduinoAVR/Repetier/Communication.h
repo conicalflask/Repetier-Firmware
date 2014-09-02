@@ -362,10 +362,13 @@ FSTRINGVAR(tMeshA)
 FSTRINGVAR(tMeshB)
 FSTRINGVAR(tMeshC)
 FSTRINGVAR(tMeshD)
-FSTRINGVAR(tBedCompensationActive)
+FSTRINGVAR(tBedCompensation)
+FSTRINGVAR(tActivated)
+FSTRINGVAR(tDeactivated)
 FSTRINGVAR(tMeshOffsetTooLarge)
 FSTRINGVAR(tMeshFailedOffset)
 FSTRINGVAR(tCorrectedBy)
+FSTRINGVAR(tMeshCleared)
 #endif
 
 static void printNumber(uint32_t n);
