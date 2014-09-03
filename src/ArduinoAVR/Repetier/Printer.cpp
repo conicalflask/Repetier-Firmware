@@ -166,7 +166,7 @@ int debugWaitLoop = 0;
     //The distance between probe points in mm
     float Printer::meshSpacing;
 
-    //The number of mesh squares in a row of the mesh. It is assumed the mesh is square.
+    //The number of mesh squares in a row of the mesh. It is assumed the mesh is square. This is the number of probed points across, minus 1.
     char Printer::meshWidth;
 
     //The height at which the bed is probed.
@@ -183,6 +183,9 @@ int debugWaitLoop = 0;
 
     //The status of the bed compensation system. 0 is disabled.
     char Printer::bedCompensationStatus = 0 ;
+
+    //So, we need to know the firmware's idea of the E position in native units. (or at least until I apply my brain to this properly.)
+    float Printer::Eposition;
 
 #endif
 
@@ -1573,15 +1576,21 @@ float buildBedMesh0() {
         //Build triangles for this row:
         if (tY>0) { //Don't build triangles if we've only probed one row. There's not enough probe points yet.
             for (char tX = 1; tX < Printer::meshWidth+1; tX++) {
+                float posX = tX*Printer::meshSpacing+Printer::meshOffsetX;
+                float posY = tY*Printer::meshSpacing+Printer::meshOffsetY;
+                float posXm1 = (tX-1)*Printer::meshSpacing+Printer::meshOffsetX;
+                float posYm1 = (tY-1)*Printer::meshSpacing+Printer::meshOffsetY;
+
+
                 //triangle A: (pX-1,pY),(pX-1,pY-1),(pX,pY-1)
-                Printer::mesh[onTriangle++] = mkTriangle(tX-1, tY, currentRow[tX-1],
-                                                         tX-1, tY-1, previousRow[tX-1],
-                                                         tX, tY-1, previousRow[tX]);
+                Printer::mesh[onTriangle++] = mkTriangle(posXm1, posY, currentRow[tX-1],
+                                                         posXm1, posYm1, previousRow[tX-1],
+                                                         posX, posYm1, previousRow[tX]);
 
                 //Add triangle B: (pX-1,pY),(pX,pY),(pX,pY-1)
-                Printer::mesh[onTriangle++] = mkTriangle(tX-1, tY, currentRow[tX-1],
-                                                         tX, tY, currentRow[tX],
-                                                         tX, tY-1, previousRow[tX]);
+                Printer::mesh[onTriangle++] = mkTriangle(posXm1, posY, currentRow[tX-1],
+                                                         posX, posY, currentRow[tX],
+                                                         posX, posYm1, previousRow[tX]);
             }
         }
     }
@@ -1657,4 +1666,212 @@ char Printer::buildBedMesh() {
     return 0;
 }
 
+/**
+ * Determines the index into the mesh array that will give us the triangle relating to the X and Y coords given.
+ */
+int getTriangleIndex(float x, float y) {
+    //Calculate X and Y after offset and unitisation:
+    float ouX = (x-Printer::meshOffsetX)/Printer::meshSpacing;
+    float ouY = (y-Printer::meshOffsetY)/Printer::meshSpacing;
+    
+    //Determine if we're in an A or B triangle:
+    char isB = (fmod(ouX,1)+fmod(ouY,1) > 1 ? 1 : 0);
+
+    //Find the square coords we're in:
+    int sqX = (int)ouX;
+    int sqY = (int)ouY;
+
+    return sqX*2 + sqY*2*Printer::meshWidth + isB;
+}
+
+/**
+ * Gets the Z offset of the bed at (x,y)
+ * Expensive. Don't piss around.
+ */
+float getBedZat(float x, float y) {
+    //Which mesh triangle does this point reside in?
+    int tIdx = getTriangleIndex(x,y);
+
+    //4) Calculate Z from the plane equation of this triangle
+    struct meshTriangle plane = Printer::mesh[tIdx];
+
+    //woop maths.
+    return (plane.D - plane.A * x - plane.B * y) / plane.C;
+}
+
+/**
+ * Looks up what the Z should be at given a target Z and the bed Z.
+ */
+float mappedZprecomp(float bedZ, float z) {
+    if (Printer::correctedByZ>BEDCOMPENSATION_NEVERCORRECT_HEIGHT) {
+        //Same distortion at all Z points.
+        return bedZ+z;
+    } else if (z > Printer::correctedByZ) {
+
+        //Target Z is above the threshold so everything's good already!
+        return z;
+
+    } else {
+
+        //In the distortion zone, and distortion correction is enabled:
+        return bedZ * (1-z/Printer::correctedByZ) + z;
+
+    }
+}
+
+/**
+ * Looks up what the Z should be at an X and Y position and taking account of the allowable distortion.
+ */
+float mappedZ(float x, float y, float z) {
+    mappedZprecomp(getBedZat(x,y), z);
+}
+
+/**
+ * Actually does a G0/G1 command.
+ * lifted straight from Commands.cpp
+ */
+void commitMoveGCode(GCode *com) {
+    if(com->hasS())
+                Printer::setNoDestinationCheck(com->S!=0);
+            if(Printer::setDestinationStepsFromGCode(com)) // For X Y Z E F
+#if NONLINEAR_SYSTEM
+                PrintLine::queueDeltaMove(ALWAYS_CHECK_ENDSTOPS, true, true);
+#else
+                PrintLine::queueCartesianMove(ALWAYS_CHECK_ENDSTOPS,true);
 #endif
+}
+
+/*
+ * We do not apply the target E multiplier to the line immediately but instead each move does the average e mult of the start and end points.
+ */
+float previousPointEMult = 1.0;
+
+
+/**
+ * Given a move GCode this will mangle it to have the corrected Z height and E-value.
+ */
+void mangleMove(GCode *com, float targetX, float targetY, float targetZ) {
+
+    //First up, put the X and Y back into the GCode:
+    if (Printer::relativeCoordinateMode) {
+        com->X = targetX-Printer::currentPosition[0];
+        com->Y = targetX-Printer::currentPosition[1];
+    } else {
+        //Absolute mode:
+        com->X = targetX;
+        com->Y = targetY;
+    }
+
+    //mangle the Z coord
+    float zHere = getBedZat(targetX, targetY);
+    float moveZ = mappedZprecomp(zHere, targetZ);
+
+    if (Printer::relativeCoordinateMode) {
+        com->Z = moveZ-Printer::currentPosition[2];
+    } else {
+        com->Z = moveZ;
+    }
+    
+
+    if (com->hasE()) {
+        //This is an extrusion move not a travel so E needs recalculation.
+        float moveEMult;
+
+        if (Printer::correctedByZ>BEDCOMPENSATION_NEVERCORRECT_HEIGHT) {
+            moveEMult = 1.0;
+        } else {
+            float gotoEMult = (Printer::correctedByZ - zHere) / Printer::correctedByZ;
+            moveEMult = (gotoEMult+previousPointEMult)/2;
+            previousPointEMult = gotoEMult;
+        }
+
+        if (Printer::relativeExtruderCoordinateMode) {
+            com->E *= moveEMult;
+        } else {
+            float eRel = com->E - Printer::Eposition;
+            com->E = eRel*moveEMult + Printer::Eposition;
+        }
+
+        
+    }
+
+    commitMoveGCode(com);
+}
+
+/**
+ * heh.
+ */
+inline float sqr(float x)
+{
+  return x * x;
+}
+
+/**
+ * Does a G0/G1 command taking into account the bed compensation mesh.
+ * It does this by re-writing the code and then performing the action as it would have happened.
+ */
+void Printer::doMoveCommand(GCode *com) {
+    //In any case we need to know the exact target Z height at the end of the move:
+    float tZ; //targetZ
+    if (com->hasZ()) {
+        tZ = com->Z;
+        if (Printer::relativeCoordinateMode) tZ += Printer::currentPosition[2];
+    } else {
+        tZ = Printer::currentPosition[2];
+    }
+    
+    //1) SUPER fast path (are Z above our distortion zone?)
+    /**
+     * Superfastpath: If our move starts and finishes above the correction line then we can just dispatch immediately.
+     */
+    if (Printer::currentPosition[2] > Printer::correctedByZ and tZ > Printer::correctedByZ) {
+        //JFDI:
+        commitMoveGCode(com);
+    }
+
+    //2) Do some preliminaries needed for the fastpath and slowpath.
+    float tX, tY; //Target (x,y) position.
+    if (com->hasX()) {
+        tX = com->X;
+        if (Printer::relativeCoordinateMode) tX += Printer::currentPosition[0];
+    } else {
+        tX = Printer::currentPosition[0];
+    }
+    if (com->hasY()) {
+        tY = com->Y;
+        if (Printer::relativeCoordinateMode) tY += Printer::currentPosition[1];
+    } else {
+        tY = Printer::currentPosition[1];
+    }
+    float tE;
+    if (com->hasE()) {
+        tE = com->E;
+    }
+
+    //Yes yes I know this can be done faster if we're in relative mode and I still don't care.
+    float totalDistance = sqrt(sqr(tX-Printer::currentPosition[0])+sqr(tY-Printer::currentPosition[1]));
+
+    //3) fast path (is the move shorter than our short-move threshold?)
+    /*
+     * Fastpath: Is the move shorter than our fastpath limit?
+     */
+    if (totalDistance<BEDCOMPENSATION_FASTPATH_MAXLENGTH) {
+        //Fastpath onlypath... at the moment.
+        mangleMove(com, tX, tY, tZ);
+    } else {
+        //4) slowpath (split move into smaller moves.)
+
+        //no C slow path yet. 
+    }
+
+    //Now 'correct' the E offset to show we've moved as much as the original unmangled GCode intended: (if we're in absolute E moves)
+    if (com->hasE() && !Printer::relativeExtruderCoordinateMode) {
+        Printer::currentPositionSteps[E_AXIS] = Printer::convertToMM(tE)*Printer::axisStepsPerMM[E_AXIS];
+
+        //As we've 'reset' our E meter to the value expected the next absolute move E GCode can carry on from where it expected.
+    }
+}
+
+#endif
+
+

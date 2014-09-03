@@ -325,7 +325,7 @@ def moveTo(to, travel, extras):
 	moveDst = 0
 
 	#fastpath:
-	if (totalDistance<FASTPATH_DISTANCE_SQR):
+	if (totalDistance<math.sqrt(FASTPATH_DISTANCE_SQR):
 		commitMove(x,y,z,e,travel, extras)
 		#print "moveTo done. (fastpath)"
 		#print

@@ -442,6 +442,16 @@ void Commands::executeGCode(GCode *com)
         {
         case 0: // G0 -> G1
         case 1: // G1
+#ifdef BEDCOMPENSATION
+        /**
+         * So, we've got BEDCOMPENSATION support compiled in. Is it enabled?
+         */ 
+        if (Printer::bedCompensationStatus) {
+            //Let our implementation do the heavy lifting for this move:
+            Printer::doMoveCommand(com);
+        } else //If not, fall through to the normal case: (isn't C great?)
+#endif
+        {
             if(com->hasS())
                 Printer::setNoDestinationCheck(com->S!=0);
             if(Printer::setDestinationStepsFromGCode(com)) // For X Y Z E F
@@ -450,6 +460,7 @@ void Commands::executeGCode(GCode *com)
 #else
                 PrintLine::queueCartesianMove(ALWAYS_CHECK_ENDSTOPS,true);
 #endif
+        }
             break;
 #if ARC_SUPPORT
         case 2: // CW Arc
@@ -922,6 +933,10 @@ void Commands::executeGCode(GCode *com)
             if(com->hasE())
             {
                 Printer::currentPositionSteps[E_AXIS] = Printer::convertToMM(com->E)*Printer::axisStepsPerMM[E_AXIS];
+                #ifdef BEDCOMPENSATION
+                //bed compensation gcode mongling needs the equivalent of currentPosition[3]
+                Printer::Eposition = com->E;
+                #endif
             }
         }
         break;

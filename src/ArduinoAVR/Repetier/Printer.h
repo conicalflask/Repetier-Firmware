@@ -184,6 +184,7 @@ public:
     static float bedCompensationProbeHeight;
     static float maxProbedZ;
     static char bedCompensationStatus;
+    static float Eposition;
 
 #endif
 
@@ -684,6 +685,7 @@ public:
 #ifdef BEDCOMPENSATION
     static void freeBedMesh();
     static char buildBedMesh();
+    static void doMoveCommand(GCode *com);
 #endif BEDCOMPENSATION 
 
 private:

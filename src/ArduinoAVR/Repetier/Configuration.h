@@ -46,12 +46,21 @@
 //This area close to the edge of the bed will not be probed (as it might go beyond the reachable area after rotation due to bed levelling)
 #define BEDCOMPENSATION_MARGIN 10
 
+//The spacing for the probe points for mesh generation if none specified:
 #define BEDCOMPENSATION_DEFAULT_SPACING 30.0
+
+//The maximum size of a move that will still use the fastpath: (3mm seems like a reasonable starting point. It should certainly be less than (probespacing/3).
+//#define BEDCOMPENSATION_FASTPATH_MAXLENGTH 3.0
+ //until we have a slowpath, every move must be fast!
+#define BEDCOMPENSATION_FASTPATH_MAXLENGTH 99999.9
 
 //The lowest bed point needs to be as close to zero as possible, but never less than 0. If the point is in the interval [0,BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION] it is allowed.
 #define BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION 0.1
 
 //If no I or J are supplied to G36 this is the distortion factor used.
 #define BEDCOMPENSATION_DEFAULT_DISTORTION 0.5
+
+//If the correct-by height is greater than this the firmare will never correct the geometry.
+#define BEDCOMPENSATION_NEVERCORRECT_HEIGHT 9999.9
 
 #endif

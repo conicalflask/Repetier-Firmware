@@ -1,7 +1,7 @@
 # CF-Repetier - Repetier with automatic bed compensation!
 
 ** Note: This is a work in progress. The proof of concept has been completed (relevel.py)
-and works! Now the algorithm is being integrated into Repetier for fully automatic compensation. **
+and works! G35, G36 and M336 complete. Now working on the in-firmware GCode re-writer. **
 
 ## Who needs calibration!?
 
