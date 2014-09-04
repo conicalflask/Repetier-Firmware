@@ -1573,6 +1573,8 @@ float buildBedMesh0() {
             Printer::maxProbedZ = fmax(Printer::maxProbedZ, probed);
         }
 
+        Com::printArrayFLN(Com::tProbeRow,currentRow,Printer::meshWidth+1,3);
+
         //Build triangles for this row:
         if (tY>0) { //Don't build triangles if we've only probed one row. There's not enough probe points yet.
             for (char tX = 1; tX < Printer::meshWidth+1; tX++) {
@@ -1755,7 +1757,7 @@ void mangleMove(GCode *com, float targetX, float targetY, float targetZ) {
     //First up, put the X and Y back into the GCode:
     if (Printer::relativeCoordinateMode) {
         com->X = targetX-Printer::currentPosition[0];
-        com->Y = targetX-Printer::currentPosition[1];
+        com->Y = targetY-Printer::currentPosition[1];
     } else {
         //Absolute mode:
         com->X = targetX;
@@ -1827,6 +1829,7 @@ void Printer::doMoveCommand(GCode *com) {
     if (Printer::currentPosition[2] > Printer::correctedByZ and tZ > Printer::correctedByZ) {
         //JFDI:
         commitMoveGCode(com);
+        return;
     }
 
     //2) Do some preliminaries needed for the fastpath and slowpath.
