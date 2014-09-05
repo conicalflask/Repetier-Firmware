@@ -1756,12 +1756,12 @@ void mangleMove(GCode *com, float targetX, float targetY, float targetZ) {
 
     //First up, put the X and Y back into the GCode:
     if (Printer::relativeCoordinateMode) {
-        com->X = targetX-Printer::currentPosition[0];
-        com->Y = targetY-Printer::currentPosition[1];
+        com->setX(targetX-Printer::currentPosition[0]);
+        com->setY(targetY-Printer::currentPosition[1]);
     } else {
         //Absolute mode:
-        com->X = targetX;
-        com->Y = targetY;
+        com->setX(targetX);
+        com->setY(targetY);
     }
 
     //mangle the Z coord
@@ -1769,9 +1769,9 @@ void mangleMove(GCode *com, float targetX, float targetY, float targetZ) {
     float moveZ = mappedZprecomp(zHere, targetZ);
 
     if (Printer::relativeCoordinateMode) {
-        com->Z = moveZ-Printer::currentPosition[2];
+        com->setZ(moveZ-Printer::currentPosition[2]);
     } else {
-        com->Z = moveZ;
+        com->setZ(moveZ);
     }
     
 

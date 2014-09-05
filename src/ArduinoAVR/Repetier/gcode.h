@@ -64,6 +64,27 @@ public:
     {
         return ((params & 32)!=0);
     }
+    #ifdef BEDCOMPENSATION
+    /**
+     * bed compensation code modifies gcodes, adding in X,Y and Z to moves where they weren't present before.
+     * This isn't needed for E though as E is only changed if it was already there.
+     */
+    inline void setX(float inX)
+    {
+        X = inX;
+        params |= 8;
+    }
+    inline void setY(float inY)
+    {
+        Y = inY;
+        params |= 16;
+    }
+    inline void setZ(float inZ)
+    {
+        Z = inZ;
+        params |= 32;
+    }
+    #endif
     inline bool hasNoXYZ()
     {
         return ((params & 56)==0);
