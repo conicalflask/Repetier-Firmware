@@ -187,6 +187,9 @@ int debugWaitLoop = 0;
     //So, we need to know the firmware's idea of the E position in native units. (or at least until I apply my brain to this properly.)
     float Printer::Eposition;
 
+	//This value is mostly for fun. It's the sum of squares of the probed bed offsets divided by the number of probe points.
+	float Printer::bedBadnessScore;
+
 #endif
 
 
@@ -1443,6 +1446,14 @@ void Printer::buildTransformationMatrix(float h1,float h2,float h3)
 #ifdef BEDCOMPENSATION
 
 /**
+ * heh.
+ */
+inline float sqr(float x)
+{
+  return x * x;
+}
+
+/**
  * Deallocates the bed mesh releasing the memory used.
  */
 void Printer::freeBedMesh() {
@@ -1563,12 +1574,19 @@ float buildBedMesh0() {
 
     unsigned int onTriangle = 0;
 
+	Printer::bedBadnessScore = 0.0;
+	int probeCount = 0;
+
     for (char tY = 0; tY < Printer::meshWidth+1; tY++) {
 
         //Capture the current row:
         for (char tX = 0; tX < Printer::meshWidth+1; tX++) {
             previousRow[tX] = currentRow[tX];
             float probed = currentRow[tX] = probeBedAt(tX,tY);
+
+			Printer::bedBadnessScore += sqr(probed);
+			probeCount++;
+
             minSeenZ = fmin(minSeenZ,probed);
             Printer::maxProbedZ = fmax(Printer::maxProbedZ, probed);
         }
@@ -1596,6 +1614,8 @@ float buildBedMesh0() {
             }
         }
     }
+	
+	Printer::bedBadnessScore /= probeCount;
 
     return minSeenZ;
 }
@@ -1798,14 +1818,6 @@ void mangleMove(GCode *com, float targetX, float targetY, float targetZ) {
     }
 
     commitMoveGCode(com);
-}
-
-/**
- * heh.
- */
-inline float sqr(float x)
-{
-  return x * x;
 }
 
 /**
