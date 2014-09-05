@@ -185,6 +185,7 @@ public:
     static float maxProbedZ;
     static char bedCompensationStatus;
     static float Eposition;
+	static float bedBadnessScore;
 
 #endif
 
