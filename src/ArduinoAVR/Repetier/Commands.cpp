@@ -824,6 +824,7 @@ void Commands::executeGCode(GCode *com)
                         if (allowed) {
                             //probe allowed!
                             Printer::moveToReal(xProbe,yProbe,BEDCOMPENSATION_PROBEHEIGHT,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
+                            Printer::updateCurrentPosition();
                             float probe = Printer::currentPosition[Z_AXIS]-Printer::runZProbe(false,false);
                             xPoints[onXPoint++] = probe;
                             minSeen = fmin(minSeen,probe);

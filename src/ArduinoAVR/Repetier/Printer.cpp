@@ -1471,7 +1471,9 @@ float probeBedAtReal(char meshX, char meshY) {
     float yProbe = meshY*Printer::meshSpacing + Printer::meshOffsetY + BEDCOMPENSATION_MARGIN;
     
     Printer::moveToReal(xProbe,yProbe,Printer::bedCompensationProbeHeight,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
-    return Printer::currentPosition[Z_AXIS]-Printer::runZProbe(false,false);
+    float pVal = Printer::runZProbe(false,false);
+    Printer::updateCurrentPosition();
+    return Printer::currentPosition[Z_AXIS]-pVal;
 }
 
 /**
@@ -1672,6 +1674,9 @@ char Printer::buildBedMesh() {
         //Update zLength of the printer to account for the lowest probed point.
         Printer::updateCurrentPosition();
         Printer::zLength -= minSeen;
+        //Over compensate by a tiny amount: (always positive, to try to ensure we don't get a negative outcome)
+        Printer::zLength += BEDCOMPENSATION_ZPROBE_ERROR/2.0;
+
         Printer::updateDerivedParameter();
         Printer::homeAxis(true,true,true);
         Printer::updateCurrentPosition();

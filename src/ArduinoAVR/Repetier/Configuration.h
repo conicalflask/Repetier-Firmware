@@ -57,6 +57,9 @@
 //The lowest bed point needs to be as close to zero as possible, but never less than 0. If the point is in the interval [0,BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION] it is allowed.
 #define BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION 0.1
 
+//A rough estimate of the maximum expected probe error. (used to over-adjust when correcting printer z-Height.)
+#define BEDCOMPENSATION_ZPROBE_ERROR 0.05
+
 //If no I or J are supplied to G36 this is the distortion factor used.
 #define BEDCOMPENSATION_DEFAULT_DISTORTION 0.5
 
