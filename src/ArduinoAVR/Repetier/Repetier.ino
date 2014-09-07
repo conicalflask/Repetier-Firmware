@@ -46,6 +46,8 @@ Implemented Codes
 - G30 P<0..3> - Single z-probe at current position P = 1 first measurement, P = 2 Last measurement P = 0 or 3 first and last measurement
 - G31 - Write signal of probe sensor
 - G32 S<0..2> P<0..1> - Autolevel print bed. S = 1 measure zLength, S = 2 Measue and store new zLength
+- G35 - Probe bed and print a report to the serial connection
+- G36 - Probe bed and produce a correction mesh. S1 = enable after probing. (See readme)
 - G90 - Use absolute coordinates
 - G91 - Use relative coordinates
 - G92 - Set current position to cordinates given
@@ -113,6 +115,7 @@ Custom M Codes
 - M320 - Activate autolevel
 - M321 - Deactivate autolevel
 - M322 - Reset autolevel matrix
+- M336 - Configure auto bed compensation feature (see readme)
 - M340 P<servoId> S<pulseInUS> : servoID = 0..3, Servos are controlled by a pulse with normally between 500 and 2500 with 1500ms in center position. 0 turns servo off.
 - M350 S<mstepsAll> X<mstepsX> Y<mstepsY> Z<mstepsZ> E<mstepsE0> P<mstespE1> : Set microstepping on RAMBO board
 - M400 - Wait until move buffers empty.

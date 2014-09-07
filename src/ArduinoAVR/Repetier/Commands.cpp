@@ -896,7 +896,6 @@ void Commands::executeGCode(GCode *com)
                     }
 
                     Com::printFLN(Com::tCorrectedBy, Printer::correctedByZ, 2);
-					Com::printFLN(Com::tBedBadness, Printer::bedBadnessScore, 5);
 
                      //4: setup flags so that the mesh is now in use (if requested by S parameter)
                     if (com->hasS() && com->S>0) {
@@ -905,6 +904,7 @@ void Commands::executeGCode(GCode *com)
                         Com::printFLN(Com::tActivated);
                     }
 
+                    Com::printFLN(Com::tBedBadness, Printer::bedBadnessScore, 3);
 
                     if(com->hasS() && com->S == 2)
                         EEPROM::storeDataIntoEEPROM();

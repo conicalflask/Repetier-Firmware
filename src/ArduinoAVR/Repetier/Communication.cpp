@@ -382,7 +382,7 @@ FSTRINGVALUE(Com::tMeshOffsetTooLarge, "Bed Z-offset error too large, retrying. 
 FSTRINGVALUE(Com::tMeshFailedOffset, "Failed to create bed surface mesh because the Z-offset is too large and couldn't be corrected.")
 FSTRINGVALUE(Com::tCorrectedBy, "Prints will be corrected by [mm]: ")
 FSTRINGVALUE(Com::tMeshCleared, "Bed mesh cleared.")
-FSTRINGVALUE(Com::tBedBadness, "Bed badness score (lower is better):")
+FSTRINGVALUE(Com::tBedBadness, "Bed badness score (lower is better): ")
 #endif
 
 void Com::printWarningF(FSTRINGPARAM(text)) {

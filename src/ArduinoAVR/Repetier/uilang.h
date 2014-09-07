@@ -259,6 +259,11 @@
 #define UI_TEXT_STOP_PRINT "Stop Print"
 #define UI_TEXT_Z_BABYSTEPPING "Z Babystepping"
 
+// bed compensation phrases:
+#define UI_TEXT_BED_PROBE           "Creating bed mesh..."
+#define UI_TEXT_BED_PROBE_RETRY     "Retrying bed mesh..."
+
+
 // *************** German translation ****************
 
 #if UI_LANGUAGE==1

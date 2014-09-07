@@ -187,7 +187,7 @@ int debugWaitLoop = 0;
     //So, we need to know the firmware's idea of the E position in native units. (or at least until I apply my brain to this properly.)
     float Printer::Eposition;
 
-	//This value is mostly for fun. It's the sum of squares of the probed bed offsets divided by the number of probe points.
+	//This value is mostly for fun. It's the ((sum of squares of the probed bed offsets) divided by the number of probe points) * 100 (to make it a more sensible range as good printers will be <0.1 otherwise.)
 	float Printer::bedBadnessScore;
 
 #endif
@@ -1565,6 +1565,8 @@ struct meshTriangle mkTriangle(float x1, float y1, float z1, float x2, float y2,
  * This will update maxProbedZ
 
  * Note: The probe is deployed and retracted during this phase to avoid error introduced by deployment unfairly biasing the first probe sequence.
+ * (during testing, automatic z height corrections didn't seem to have enough effect (for the retry probing), 
+   however after rehoming and trying again it worked fine. This hints that the deployment is affecting z height measurement somehow, as this is the only thing that wasn't being performed for the retry probing.)
  */
 float buildBedMesh0() {
 
@@ -1625,6 +1627,7 @@ float buildBedMesh0() {
     Printer::moveToReal(0,0,Printer::bedCompensationProbeHeight,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
     Printer::runZProbe(false,true);
 	
+    Printer::bedBadnessScore *= 100;
 	Printer::bedBadnessScore /= probeCount;
 
     return minSeenZ;
@@ -1658,9 +1661,11 @@ char Printer::buildBedMesh() {
     Commands::writeLowestFreeRAM();
 
     //1st attempt at building the mesh:
+    UI_STATUS_UPD(UI_TEXT_BED_PROBE);
     float minSeen = buildBedMesh0();
     if (minSeen<0 || minSeen>BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION) {
         //The mesh was too far offset so attempt again:
+        UI_STATUS_UPD(UI_TEXT_BED_PROBE_RETRY);
         Com::printFLN(Com::tMeshOffsetTooLarge, minSeen);
 
 
@@ -1669,6 +1674,7 @@ char Printer::buildBedMesh() {
         Printer::zLength -= minSeen;
         Printer::updateDerivedParameter();
         Printer::homeAxis(true,true,true);
+        Printer::updateCurrentPosition();
 
         float minSeen = buildBedMesh0();
         if (minSeen<0 || minSeen>BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION) {
@@ -1685,6 +1691,8 @@ char Printer::buildBedMesh() {
         Com::printF(Com::tMeshC, Printer::mesh[i].C);
         Com::printFLN(Com::tMeshD, Printer::mesh[i].D);
     }
+
+    UI_CLEAR_STATUS
 
     //Success!
     return 0;
