@@ -1563,6 +1563,8 @@ struct meshTriangle mkTriangle(float x1, float y1, float z1, float x2, float y2,
 /**
  * builds a bed mesh returning the smallest Z seen.
  * This will update maxProbedZ
+
+ * Note: The probe is deployed and retracted during this phase to avoid error introduced by deployment unfairly biasing the first probe sequence.
  */
 float buildBedMesh0() {
 
@@ -1576,6 +1578,10 @@ float buildBedMesh0() {
 
 	Printer::bedBadnessScore = 0.0;
 	int probeCount = 0;
+
+    //deploy probe
+    Printer::moveToReal(0,0,Printer::bedCompensationProbeHeight,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
+    Printer::runZProbe(true,false);
 
     for (char tY = 0; tY < Printer::meshWidth+1; tY++) {
 
@@ -1614,6 +1620,10 @@ float buildBedMesh0() {
             }
         }
     }
+
+    //Retract probe:
+    Printer::moveToReal(0,0,Printer::bedCompensationProbeHeight,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
+    Printer::runZProbe(false,true);
 	
 	Printer::bedBadnessScore /= probeCount;
 
@@ -1647,10 +1657,6 @@ char Printer::buildBedMesh() {
     Commands::checkFreeMemory();
     Commands::writeLowestFreeRAM();
 
-    //deploy probe
-    Printer::moveToReal(0,0,Printer::bedCompensationProbeHeight,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
-    Printer::runZProbe(true,false);
-
     //1st attempt at building the mesh:
     float minSeen = buildBedMesh0();
     if (minSeen<0 || minSeen>BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION) {
@@ -1679,10 +1685,6 @@ char Printer::buildBedMesh() {
         Com::printF(Com::tMeshC, Printer::mesh[i].C);
         Com::printFLN(Com::tMeshD, Printer::mesh[i].D);
     }
-
-    //Retract probe:
-    Printer::moveToReal(0,0,Printer::bedCompensationProbeHeight,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
-    Printer::runZProbe(false,true);
 
     //Success!
     return 0;
@@ -1768,6 +1770,13 @@ void commitMoveGCode(GCode *com) {
  */
 float previousPointEMult = 1.0;
 
+/**
+ * This represents the current position in Z according to the input gcode.
+ *
+ * We need to keep hold of this as currentPosition[2] is post mangling.
+ */
+float currentPositionZgCode = 0.0;
+
 
 /**
  * Given a move GCode this will mangle it to have the corrected Z height and E-value.
@@ -1829,9 +1838,9 @@ void Printer::doMoveCommand(GCode *com) {
     float tZ; //targetZ
     if (com->hasZ()) {
         tZ = com->Z;
-        if (Printer::relativeCoordinateMode) tZ += Printer::currentPosition[2];
+        if (Printer::relativeCoordinateMode) tZ += currentPositionZgCode;
     } else {
-        tZ = Printer::currentPosition[2];
+        tZ = currentPositionZgCode;
     }
     
     //1) SUPER fast path (are Z above our distortion zone?)
@@ -1860,6 +1869,7 @@ void Printer::doMoveCommand(GCode *com) {
     }
     float tE;
     if (com->hasE()) {
+        //This is used to 'catch up' the printer's E position after the move.
         tE = com->E;
     }
 

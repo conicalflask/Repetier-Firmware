@@ -9,7 +9,7 @@ We all do, but that doesn't mean we can't do more with imperfect printers and op
 
 Having a correctly levelled and flat print surface, and in the case of delta printers, correctly calibrated delta parameters is extremely important. Without a properly levelled and flat print surface it is impossible to print large objects as the first layer will either not stick properly, become scraped by the print head, or both.
 
-Proper physical print bed levelling is difficult and in many cases cannot be acheived. Specialist tools are required to determine that a surface is exactly perpendicular to the Z-axis and even more specialist expertise and equipment to correct this. It is not realistic to expect those building their own home 3D printer much less those buying off-the-shelf home 3D printers to have the tools or expertise to ensure a print surface is flat to within 1mm/m and level with the same tolerances. Excellent first layer quality requires this kind of precision.
+Proper physical print bed levelling is difficult and in many cases cannot be achieved. Specialist tools are required to determine that a surface is exactly perpendicular to the Z-axis and even more specialist expertise and equipment to correct this. It is not realistic to expect those building their own home 3D printer much less those buying off-the-shelf home 3D printers to have the tools or expertise to ensure a print surface is flat to within 1mm/m and level with the same tolerances. Excellent first layer quality requires this kind of precision.
 
 Both Marlin and Repetier support some basic techniques to mitigate printer imprecision.
 
@@ -65,7 +65,7 @@ What needs configuring?
 
 Anything else?
 
-Bed compensation is volatile and should be done immediately before any print and ideally while everything is hot. Especially with heated PCB surfaces the curvature is highly temperature sensitive. This is just acheived by performing adding a "G36 S1" command to your preamble gcode in your slicer after preheating your extruder and bed, failing this, just adding this to your printers startup gcode will probably be good enough and save time for each print.
+Bed compensation is volatile and should be done immediately before any print and ideally while everything is hot. Especially with heated PCB surfaces the curvature is highly temperature sensitive. This is just done by performing adding a "G36 S1" command to your preamble gcode in your slicer after preheating your extruder and bed. You could also just add this to your printer's startup gcode will probably be good enough and save time for each print.
 
 ## How does this work?
 
