@@ -1859,8 +1859,9 @@ void Printer::doMoveCommand(GCode *com) {
     //1) SUPER fast path (are Z above our distortion zone?)
     /**
      * Superfastpath: If our move starts and finishes above the correction line then we can just dispatch immediately.
+                      OR if the move is E only. (like a retract/restart)
      */
-    if (Printer::currentPosition[2] > Printer::correctedByZ and tZ > Printer::correctedByZ) {
+    if ((Printer::currentPosition[2] > Printer::correctedByZ and tZ > Printer::correctedByZ) or com->hasNoXYZ()) {
         //JFDI:
         commitMoveGCode(com);
         return;
@@ -1905,7 +1906,7 @@ void Printer::doMoveCommand(GCode *com) {
     //Now 'correct' the E offset to show we've moved as much as the original unmangled GCode intended: (if we're in absolute E moves)
     if (com->hasE() && !Printer::relativeExtruderCoordinateMode) {
         Printer::currentPositionSteps[E_AXIS] = Printer::convertToMM(tE)*Printer::axisStepsPerMM[E_AXIS];
-        Printer::Eposition = com->E;
+        Printer::Eposition = tE;
         //As we've 'reset' our E meter to the value expected the next absolute move E GCode can carry on from where it expected.
     }
 }
