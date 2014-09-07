@@ -1905,7 +1905,7 @@ void Printer::doMoveCommand(GCode *com) {
     //Now 'correct' the E offset to show we've moved as much as the original unmangled GCode intended: (if we're in absolute E moves)
     if (com->hasE() && !Printer::relativeExtruderCoordinateMode) {
         Printer::currentPositionSteps[E_AXIS] = Printer::convertToMM(tE)*Printer::axisStepsPerMM[E_AXIS];
-
+        Printer::Eposition = com->E;
         //As we've 'reset' our E meter to the value expected the next absolute move E GCode can carry on from where it expected.
     }
 }
