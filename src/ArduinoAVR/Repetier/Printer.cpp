@@ -1834,6 +1834,7 @@ void mangleMove(GCode *com, float targetX, float targetY, float targetZ) {
         } else {
             float eRel = com->E - Printer::Eposition;
             com->E = eRel*moveEMult + Printer::Eposition;
+			Printer::Eposition = com->E;
         }
 
         
@@ -1900,7 +1901,211 @@ void Printer::doMoveCommand(GCode *com) {
     } else {
         //4) slowpath (split move into smaller moves.)
 
-        //no C slow path yet. 
+        /**
+	if x2-x1==0:
+		overallGradient = float("+inf")
+		#print "Planned line eq: virtical line"
+		moveC = 0 #line equations are nonsense for this line
+	else:
+		overallGradient = (y2-y1)/(x2-x1)
+		moveC = y1-overallGradient*x1   # C value for line equation of this move.
+		#print "Planned line eq: y=%.2fx + %.2f"%(overallGradient,moveC)
+
+	goesRight = x2>x1
+	goesUp = y2>y1
+
+	#a counter of distance completed. (to enable running Z and E counters)
+	totalComplete = 0
+
+	zStart = z1
+	eStart = e1
+	totalRelativeE = e2-eStart
+	totalRelativeZ = z2-zStart
+
+	while True:
+
+		x1,y1,z1,e1 = currentPosition
+		
+		positionInBoxX = x1%probespacing
+		positionInBoxY = y1%probespacing
+		inboxX = x1 - positionInBoxX
+		inboxY = y1 - positionInBoxY
+
+		#print "finding next point to goto",
+		#print "from current position (%.2f,%.2f,%.2f)"%(x1,y1,z1)
+
+		
+		if goesRight:
+			distanceToX = probespacing-positionInBoxX
+			nextCrossX = inboxX+probespacing
+		else:
+			distanceToX = -positionInBoxX
+			nextCrossX = inboxX
+
+		if goesUp:
+			distanceToY = probespacing-positionInBoxY
+			nextCrossY = inboxY+probespacing
+		else:
+			distanceToY = -positionInBoxY
+			nextCrossY = inboxY			
+
+		#point it crosses a virtical edge
+		if abs(overallGradient) < sys.float_info.max:
+			nextCrossX_y = overallGradient * nextCrossX + moveC
+			nextCrossX_y_dst = nextCrossX_y-y1
+			nextCrossXdstS = distanceToX**2 + nextCrossX_y_dst**2
+			#we dont care about the X crossing if we're already on this point.
+			if (nextCrossXdstS<=0): nextCrossXdstS = IGNORE_DISTANCE
+			#print "will cross X-line at (%.2f,%.2f) in %.2f"%(nextCrossX,nextCrossX_y,math.sqrt(nextCrossXdstS))
+		else:
+			#In this case we're moving parallel to the Y axis so will never cross an X line.
+			nextCrossXdstS = IGNORE_DISTANCE
+
+		
+		#point it crosses a horizontal edge
+		if overallGradient != 0:
+			if abs(overallGradient) < sys.float_info.max:
+				#normal non-infinite gradient
+				nextCrossY_x = (nextCrossY-moveC)/overallGradient
+			else:
+				#infinite gradient means a move without chaning X value.
+				#(the move is parallel to Y-axis)
+				nextCrossY_x = x1
+			nextCrossY_x_dst = nextCrossY_x-x1
+			nextCrossYdstS = distanceToY**2 + nextCrossY_x_dst**2
+			#we dont care about the Y crossing if we're already on this point.
+			if (nextCrossYdstS<=0): nextCrossYdstS = IGNORE_DISTANCE
+			#print "will cross Y-line at (%.2f,%.2f) in %.2f"%(nextCrossY_x,nextCrossY,math.sqrt(nextCrossYdstS))
+		else:
+			#In this case we're moving parallel to the X axis so will never cross a Y line.
+			nextCrossYdstS = IGNORE_DISTANCE
+
+
+		
+		#point it crosses a diagonal edge
+		#This is more complex as we dont't already know the X or the Y or even which diagonal line we'll cross next.
+		#for any given point, we're bounded by two diagonal lines both with gradients of -1
+		# So, to work out which diagonal line we cross: (and the lines are distiguished by their Y-intercept.
+		# in this explanation c is the Y intercept of the diagonal line that goes through the box our current point is in.		
+
+		#Four predicates are used: inA, steep, goesUp and goesRight, so to find the Y-intercept of interest:
+
+		#if we're in A:
+		#	steep, up: c
+		#   steep, down: c-1
+		#   !steep, right: c
+		#	!steep, left: c-1
+		
+		#if we're in B:
+		#   steep, up: c+1
+		#	steep, down: c
+		#   !steep, right: c+1
+		#   !steep, left: 	c
+
+		#to simplify this:
+		# Let's create a predicate goingPositive that is goesUp if steep or goesRight if !steep.
+		# We can see that the table for B is the same as A but we +1 to the result in all cases.
+		# So combining these we get:
+
+		# y-intercept = c-1
+		# if goesPositive: y-intercept ++
+		# if B: y-intercept ++
+
+		# Here goes:
+
+		if overallGradient!=-1:
+			steep = abs(overallGradient)>1
+			if steep:
+				goesPositive = goesUp
+			else:
+				goesPositive = goesRight
+			
+			#The y-intercept for the currentbox is the (_x_,_y_)+1, so let's start with this value-1:
+
+			diagYintercept = inboxY+inboxX
+			inB = (positionInBoxX+positionInBoxY)>probespacing
+
+			if goesPositive:
+				diagYintercept = diagYintercept + probespacing
+
+			if inB:
+				diagYintercept = diagYintercept + probespacing
+
+			nextCrossD_x = (diagYintercept-moveC) / (overallGradient+1)
+			#use the D-line equation as it's guaranteed to be sensible but the moveTo line might have a stupid graident.
+			nextCrossD_y = -1 * nextCrossD_x + diagYintercept
+			ncd_dx = (nextCrossD_x-x1)
+			ncd_dy = (nextCrossD_y-y1)
+			#make sure we only accept line crossings in the direction we're going.
+			#This test should be redundant now. (due to more rigorious line finding method)
+			if ((ncd_dx<0) == goesRight) or ((ncd_dy<0) == goesUp):
+				nextCrossDdstS = IGNORE_DISTANCE
+			else:
+				nextCrossDdstS = ncd_dx**2 + ncd_dy**2
+			
+			#we dont care about the D crossing if we're already on this point.
+			if (nextCrossDdstS<=0): nextCrossDdstS = IGNORE_DISTANCE
+
+			#print "will cross D-line at (%.2f,%.2f) in %.2f"%(nextCrossD_x,nextCrossD_y,math.sqrt(nextCrossDdstS))
+		else:
+			#parallel to this line so no distance to intercept.
+			nextCrossDdstS = IGNORE_DISTANCE
+
+
+		targetDstS = (x2-x1)**2 + (y2-y1)**2
+		#print "target is %.2f away."%math.sqrt(targetDstS);
+
+		closest = min(nextCrossXdstS,nextCrossYdstS,nextCrossDdstS,targetDstS);
+
+		#print "closest crossing is %.2f far away."%math.sqrt(closest)
+
+		done = False
+		if closest==targetDstS:
+			#print "moving to the target",
+			moveToX = x2
+			moveToY = y2
+			done = True
+		elif nextCrossXdstS==closest:
+			#print "moving to the next X-crossing",
+			moveToX = nextCrossX
+			moveToY = nextCrossX_y
+		elif nextCrossYdstS==closest:
+			#print "moving to the next Y-crossing",
+			moveToX = nextCrossY_x
+			moveToY = nextCrossY
+		elif nextCrossDdstS==closest:
+			#print "moving to the next D-crossing",
+			moveToX = nextCrossD_x
+			moveToY = nextCrossD_y
+
+		#do not set moveToX/moveToY by default to fail fast if none matched.
+
+
+		#print "at (%.2f,%.2f)"%(moveToX,moveToY)
+
+		#How much of the remaining line is being consumed?
+		totalComplete += math.sqrt(closest)
+		fractionComplete = totalComplete/totalDistance
+
+		#calculate new E position (assuming absolute E is wanted by the consumer)
+		eMove = eStart + totalRelativeE*fractionComplete
+
+		#Calculate what Z should be at the end of this sub-move
+		zMove = zStart + totalRelativeZ*fractionComplete
+
+
+		commitMove(moveToX,moveToY,zMove,eMove,travel,extras)
+
+		if done:
+			#print "Total dist: %.2f		Segment Sum: %.2f"%(totalDistance, moveDst)
+			if abs(totalDistance - moveDst)>10**-6:
+				print "WARNING: broken maths detected! segments don't sum to whole length accurately."
+				pprint.pprint(locals())
+				quit()
+			#print "moveTo done."
+			#print
+			return
+		*/
     }
 
     //Now 'correct' the E offset to show we've moved as much as the original unmangled GCode intended: (if we're in absolute E moves)
