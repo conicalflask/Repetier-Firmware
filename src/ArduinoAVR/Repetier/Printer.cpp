@@ -1811,7 +1811,7 @@ void mangleMove(GCode *com, float targetX, float targetY, float targetZ) {
     float moveZ = mappedZprecomp(zHere, targetZ);
 
     if (Printer::relativeCoordinateMode) {
-        com->setZ(moveZ-Printer::currentPosition[2]);
+        com->setZ(moveZ-currentPositionZgCode);
     } else {
         com->setZ(moveZ);
     }
@@ -1841,6 +1841,19 @@ void mangleMove(GCode *com, float targetX, float targetY, float targetZ) {
     }
 
     commitMoveGCode(com);
+    currentPositionZgCode = targetZ;
+}
+
+/**
+ * Sets the Eposition to be the value that the GCode asked for rather than the mangled version we might have used.
+ * (we may have extruded more or less than the gcode requested due to modded layer heights.)
+ */
+void fixupE(GCode *com, float tE) {
+    if (com->hasE() && !Printer::relativeExtruderCoordinateMode) {
+        Printer::currentPositionSteps[E_AXIS] = Printer::convertToMM(tE)*Printer::axisStepsPerMM[E_AXIS];
+        Printer::Eposition = tE;
+        //As we've 'reset' our E meter to the value expected the next absolute move E GCode can carry on from where it expected.
+    }
 }
 
 /**
@@ -1865,6 +1878,7 @@ void Printer::doMoveCommand(GCode *com) {
     if ((Printer::currentPosition[2] > Printer::correctedByZ and tZ > Printer::correctedByZ) or com->hasNoXYZ()) {
         //JFDI:
         commitMoveGCode(com);
+        fixupE(com, com->E);
         return;
     }
 
@@ -2109,11 +2123,7 @@ void Printer::doMoveCommand(GCode *com) {
     }
 
     //Now 'correct' the E offset to show we've moved as much as the original unmangled GCode intended: (if we're in absolute E moves)
-    if (com->hasE() && !Printer::relativeExtruderCoordinateMode) {
-        Printer::currentPositionSteps[E_AXIS] = Printer::convertToMM(tE)*Printer::axisStepsPerMM[E_AXIS];
-        Printer::Eposition = tE;
-        //As we've 'reset' our E meter to the value expected the next absolute move E GCode can carry on from where it expected.
-    }
+    fixupE(com, tE);
 }
 
 #endif
