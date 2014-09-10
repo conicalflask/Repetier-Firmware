@@ -1591,6 +1591,11 @@ float buildBedMesh0() {
 
         //Capture the current row:
         for (char tX = 0; tX < Printer::meshWidth+1; tX++) {
+
+            //Make sure we don't appear fully dead:
+            GCode::readFromSerial();
+            Commands::checkForPeriodicalActions();
+
             previousRow[tX] = currentRow[tX];
             float probed = currentRow[tX] = probeBedAt(tX,tY);
 
@@ -1680,6 +1685,13 @@ char Printer::buildBedMesh() {
         Printer::updateDerivedParameter();
         Printer::homeAxis(true,true,true);
         Printer::updateCurrentPosition();
+
+/*
+        //Make sure we don't appear fully dead:
+        GCode::readFromSerial();
+        Commands::checkForPeriodicalActions();
+*/
+
 
         float minSeen = buildBedMesh0();
         if (minSeen<0 || minSeen>BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION) {
@@ -1793,13 +1805,15 @@ float currentPositionZgCode = 0.0;
 
 /**
  * Given a move GCode this will mangle it to have the corrected Z height and E-value.
+ * target[XYZ] must always be absolute.
+ * targetE must always be relative.
  */
-void mangleMove(GCode *com, float targetX, float targetY, float targetZ) {
+void mangleMove(GCode *com, float targetX, float targetY, float targetZ, float targetE) {
 
     //First up, put the X and Y back into the GCode:
     if (Printer::relativeCoordinateMode) {
-        com->setX(targetX-Printer::currentPosition[0]);
-        com->setY(targetY-Printer::currentPosition[1]);
+        com->setX(targetX-Printer::currentPosition[X_AXIS]);
+        com->setY(targetY-Printer::currentPosition[Y_AXIS]);
     } else {
         //Absolute mode:
         com->setX(targetX);
@@ -1830,10 +1844,9 @@ void mangleMove(GCode *com, float targetX, float targetY, float targetZ) {
         }
 
         if (Printer::relativeExtruderCoordinateMode) {
-            com->E *= moveEMult;
+            com->E = targetE * moveEMult;
         } else {
-            float eRel = com->E - Printer::Eposition;
-            com->E = eRel*moveEMult + Printer::Eposition;
+            com->E = targetE * moveEMult + Printer::Eposition;
 			Printer::Eposition = com->E;
         }
 
@@ -1847,27 +1860,51 @@ void mangleMove(GCode *com, float targetX, float targetY, float targetZ) {
 /**
  * Sets the Eposition to be the value that the GCode asked for rather than the mangled version we might have used.
  * (we may have extruded more or less than the gcode requested due to modded layer heights.)
+ * 
+ * This must be done only AFTER all submoves have been issued.
  */
-void fixupE(GCode *com, float tE) {
+void fixupE(GCode *com, float correctedE) {
     if (com->hasE() && !Printer::relativeExtruderCoordinateMode) {
-        Printer::currentPositionSteps[E_AXIS] = Printer::convertToMM(tE)*Printer::axisStepsPerMM[E_AXIS];
-        Printer::Eposition = tE;
+        Printer::currentPositionSteps[E_AXIS] = Printer::convertToMM(correctedE)*Printer::axisStepsPerMM[E_AXIS];
+        Printer::Eposition = correctedE;
         //As we've 'reset' our E meter to the value expected the next absolute move E GCode can carry on from where it expected.
     }
 }
+
+#ifdef BEDCOMPENSATION_DEBUG
+
+void bdebug(char * buf, float val) {
+    Com::print(buf);
+    Com::print(" ");
+    Com::printFloat(val,3);
+    Com::print("\n");
+}
+
+#endif
 
 /**
  * Does a G0/G1 command taking into account the bed compensation mesh.
  * It does this by re-writing the code and then performing the action as it would have happened.
  */
 void Printer::doMoveCommand(GCode *com) {
+
+    //convinience definitions
+    //Start coordinate (absolute)
+    #define x1 (currentPosition[X_AXIS])
+    #define y1 (currentPosition[Y_AXIS])
+    #define z1 (currentPosition[Z_AXIS])
+    #define e1 (Printer::Eposition)
+
+    //End absolute coordinate:
+    float x2, y2, z2, e2; /* e2 is relative, others absolute! */
+    
+
     //In any case we need to know the exact target Z height at the end of the move:
-    float tZ; //targetZ
     if (com->hasZ()) {
-        tZ = com->Z;
-        if (Printer::relativeCoordinateMode) tZ += currentPositionZgCode;
+        z2 = com->Z;
+        if (Printer::relativeCoordinateMode) z2 += currentPositionZgCode;
     } else {
-        tZ = currentPositionZgCode;
+        z2 = currentPositionZgCode;
     }
     
     //1) SUPER fast path (are Z above our distortion zone?)
@@ -1875,7 +1912,7 @@ void Printer::doMoveCommand(GCode *com) {
      * Superfastpath: If our move starts and finishes above the correction line then we can just dispatch immediately.
                       OR if the move is E only. (like a retract/restart)
      */
-    if ((Printer::currentPosition[2] > Printer::correctedByZ and tZ > Printer::correctedByZ) or com->hasNoXYZ()) {
+    if ((z1 > Printer::correctedByZ and z2 > Printer::correctedByZ) or com->hasNoXYZ()) {
         //JFDI:
         commitMoveGCode(com);
         fixupE(com, com->E);
@@ -1883,27 +1920,34 @@ void Printer::doMoveCommand(GCode *com) {
     }
 
     //2) Do some preliminaries needed for the fastpath and slowpath.
-    float tX, tY; //Target (x,y) position.
     if (com->hasX()) {
-        tX = com->X;
-        if (Printer::relativeCoordinateMode) tX += Printer::currentPosition[0];
+        x2 = com->X;
+        if (Printer::relativeCoordinateMode) x2 += x1;
     } else {
-        tX = Printer::currentPosition[0];
+        x2 = y1;
     }
     if (com->hasY()) {
-        tY = com->Y;
-        if (Printer::relativeCoordinateMode) tY += Printer::currentPosition[1];
+        y2 = com->Y;
+        if (Printer::relativeCoordinateMode) y2 += y1;
     } else {
-        tY = Printer::currentPosition[1];
+        y2 = y1;
     }
-    float tE;
+
     if (com->hasE()) {
         //This is used to 'catch up' the printer's E position after the move.
-        tE = com->E;
+
+        //e2 is always relative!
+        e2 = com->E;
+
+        if (!Printer::relativeExtruderCoordinateMode) {
+            e2 -= e1;
+        }
+    } else {
+        e2 = e1;
     }
 
     //Yes yes I know this can be done faster if we're in relative mode and I still don't care.
-    float totalDistance = sqrt(sqr(tX-Printer::currentPosition[0])+sqr(tY-Printer::currentPosition[1]));
+    float totalDistance = sqrt(sqr(x2-x1)+sqr(y2-y1));
 
     //3) fast path (is the move shorter than our short-move threshold?)
     /*
@@ -1911,219 +1955,170 @@ void Printer::doMoveCommand(GCode *com) {
      */
     if (totalDistance<BEDCOMPENSATION_FASTPATH_MAXLENGTH) {
         //Fastpath onlypath... at the moment.
-        mangleMove(com, tX, tY, tZ);
+        mangleMove(com, x2, y2, z2, e2);
     } else {
         //4) slowpath (split move into smaller moves.)
 
+        //Establish some values that only need to be calculated once per full line:
+
+        //The M and C of the move's y=mx+c line equation.
+        float overallGradient = (y2-y1)/(x2-x1);
+        float moveC = y1-overallGradient*x1;
+
+        #ifdef BEDCOMPENSATION_DEBUG
+            bdebug("Planned line m:",overallGradient);
+            bdebug("Planned line c:",moveC);
+        #endif
+
+        char goesRight = x2>x1;
+        char goesUp = y2>y1;
+
+        float totalComplete = 0.0;
+
+        #define totalRelativeE e2
+
+        float totalRelativeZ = z2-z1;
+
+        float zStart = z1;
+
+        // The loop condition is embedded within:
         /**
-	if x2-x1==0:
-		overallGradient = float("+inf")
-		#print "Planned line eq: virtical line"
-		moveC = 0 #line equations are nonsense for this line
-	else:
-		overallGradient = (y2-y1)/(x2-x1)
-		moveC = y1-overallGradient*x1   # C value for line equation of this move.
-		#print "Planned line eq: y=%.2fx + %.2f"%(overallGradient,moveC)
+         * The purpose of this loop is to split the current requested line into sublines.
+         * Lines are split whenever the line crosses a mesh edge. (considering only X and Y coordinates)
+         *
+         * This is determined by calculating the distance to each possible mesh edge that could be crossed next and chosing the closest, then going there.
+         * If the target point was closest, we go there instead and then finish.
+         */
+        while (1) {
+            float positionInBoxX = fmod(x1, Printer::meshSpacing);
+            float positionInBoxY = fmod(y1, Printer::meshSpacing);
+            float inboxX = x1 - positionInBoxX;
+            float inboxY = y1 - positionInBoxY;
 
-	goesRight = x2>x1
-	goesUp = y2>y1
+            float distanceToX, distanceToY;
+            float nextCrossX, nextCrossY;
+            if (goesRight) {
+                distanceToX = Printer::meshSpacing-positionInBoxX;
+                nextCrossX = inboxX + Printer::meshSpacing;
+            } else {
+                distanceToX = -positionInBoxX;
+                nextCrossX = inboxX;
+            }
 
-	#a counter of distance completed. (to enable running Z and E counters)
-	totalComplete = 0
+            if (goesUp) {
+                distanceToY = Printer::meshSpacing-positionInBoxY;
+                nextCrossY = inboxY + Printer::meshSpacing;
+            } else {
+                distanceToY = -positionInBoxY;
+                nextCrossY = inboxY;
+            }
 
-	zStart = z1
-	eStart = e1
-	totalRelativeE = e2-eStart
-	totalRelativeZ = z2-zStart
+            //1) Where does it next cross a virtical edge? (edges parallel to the Y axis)
+            //    the Y position of this crossing
+            float nextCrossX_y;
+            //    the distance in the Y axis to thie crossing
+            float nextCrossX_y_dst;
+            //the square of the distance to this crossing point.
+            float nextCrossXdstS;
 
-	while True:
+            nextCrossX_y = overallGradient * nextCrossX + moveC;
+            nextCrossX_y_dst = nextCrossX_y-y1;
+            nextCrossXdstS = sqr(distanceToX) + sqr(nextCrossX_y_dst);
+            if (nextCrossXdstS<=0) nextCrossXdstS = INFINITY;
 
-		x1,y1,z1,e1 = currentPosition
-		
-		positionInBoxX = x1%probespacing
-		positionInBoxY = y1%probespacing
-		inboxX = x1 - positionInBoxX
-		inboxY = y1 - positionInBoxY
+            //2) Horizontal edges (parallel to X axis)
+            float nextCrossY_x, nextCrossY_x_dst, nextCrossYdstS;
+            if (fabs(overallGradient) < INFINITY) {
+                //normal gradient, so calculate X:
+                nextCrossY_x = (nextCrossY-moveC)/overallGradient;
+            } else {
+                //infinite gradient means that the X coord is unchanged.
+                nextCrossY_x = x1;
+            }
+            nextCrossY_x_dst = nextCrossY_x - x1;
+            nextCrossYdstS = sqr(distanceToY) + sqr(nextCrossY_x_dst);
+            if (nextCrossYdstS<=0) nextCrossYdstS = INFINITY;
 
-		#print "finding next point to goto",
-		#print "from current position (%.2f,%.2f,%.2f)"%(x1,y1,z1)
+            //3) Diagonal edges (See relevel.py (the reference for this whole idea), the reasoning behind this code is 'fun'...)
+            float nextCrossD_x, nextCrossD_y, ncd_dx, ncd_dy, diagYintercept, nextCrossDdstS;
+            char steep, goesPositive;
+            if (overallGradient != -1) {
+                steep = abs(overallGradient)>1;
 
-		
-		if goesRight:
-			distanceToX = probespacing-positionInBoxX
-			nextCrossX = inboxX+probespacing
-		else:
-			distanceToX = -positionInBoxX
-			nextCrossX = inboxX
+                if (steep) {
+                    goesPositive = goesUp;
+                } else {
+                    goesPositive = goesRight;
+                }
 
-		if goesUp:
-			distanceToY = probespacing-positionInBoxY
-			nextCrossY = inboxY+probespacing
-		else:
-			distanceToY = -positionInBoxY
-			nextCrossY = inboxY			
+                diagYintercept = inboxY+inboxX;
+                char inB = (positionInBoxX + positionInBoxY) > Printer::meshSpacing;
 
-		#point it crosses a virtical edge
-		if abs(overallGradient) < sys.float_info.max:
-			nextCrossX_y = overallGradient * nextCrossX + moveC
-			nextCrossX_y_dst = nextCrossX_y-y1
-			nextCrossXdstS = distanceToX**2 + nextCrossX_y_dst**2
-			#we dont care about the X crossing if we're already on this point.
-			if (nextCrossXdstS<=0): nextCrossXdstS = IGNORE_DISTANCE
-			#print "will cross X-line at (%.2f,%.2f) in %.2f"%(nextCrossX,nextCrossX_y,math.sqrt(nextCrossXdstS))
-		else:
-			#In this case we're moving parallel to the Y axis so will never cross an X line.
-			nextCrossXdstS = IGNORE_DISTANCE
+                if (goesPositive) {
+                    diagYintercept = diagYintercept + Printer::meshSpacing;
+                }
 
-		
-		#point it crosses a horizontal edge
-		if overallGradient != 0:
-			if abs(overallGradient) < sys.float_info.max:
-				#normal non-infinite gradient
-				nextCrossY_x = (nextCrossY-moveC)/overallGradient
-			else:
-				#infinite gradient means a move without chaning X value.
-				#(the move is parallel to Y-axis)
-				nextCrossY_x = x1
-			nextCrossY_x_dst = nextCrossY_x-x1
-			nextCrossYdstS = distanceToY**2 + nextCrossY_x_dst**2
-			#we dont care about the Y crossing if we're already on this point.
-			if (nextCrossYdstS<=0): nextCrossYdstS = IGNORE_DISTANCE
-			#print "will cross Y-line at (%.2f,%.2f) in %.2f"%(nextCrossY_x,nextCrossY,math.sqrt(nextCrossYdstS))
-		else:
-			#In this case we're moving parallel to the X axis so will never cross a Y line.
-			nextCrossYdstS = IGNORE_DISTANCE
+                if (inB) {
+                    diagYintercept = diagYintercept + Printer::meshSpacing;
+                }
 
+                nextCrossD_x = (diagYintercept-moveC) / (overallGradient + 1);
+                nextCrossD_y = -1 * nextCrossD_x + diagYintercept;
+                ncd_dx = (nextCrossD_x - x1);
+                ncd_dy = (nextCrossD_y - y1);
 
-		
-		#point it crosses a diagonal edge
-		#This is more complex as we dont't already know the X or the Y or even which diagonal line we'll cross next.
-		#for any given point, we're bounded by two diagonal lines both with gradients of -1
-		# So, to work out which diagonal line we cross: (and the lines are distiguished by their Y-intercept.
-		# in this explanation c is the Y intercept of the diagonal line that goes through the box our current point is in.		
+                if (((ncd_dx<0) == goesRight) || ((ncd_dy<0) == goesUp)) {
+                    nextCrossDdstS = INFINITY;
+                } else {
+                    nextCrossDdstS = sqr(ncd_dx) + sqr(ncd_dy);
+                }
 
-		#Four predicates are used: inA, steep, goesUp and goesRight, so to find the Y-intercept of interest:
+                if (nextCrossDdstS<=0) nextCrossDdstS = INFINITY;
 
-		#if we're in A:
-		#	steep, up: c
-		#   steep, down: c-1
-		#   !steep, right: c
-		#	!steep, left: c-1
-		
-		#if we're in B:
-		#   steep, up: c+1
-		#	steep, down: c
-		#   !steep, right: c+1
-		#   !steep, left: 	c
+            } else {
+                nextCrossDdstS = INFINITY;
+            }
 
-		#to simplify this:
-		# Let's create a predicate goingPositive that is goesUp if steep or goesRight if !steep.
-		# We can see that the table for B is the same as A but we +1 to the result in all cases.
-		# So combining these we get:
+            float targetDstS = sqr(x2-x1)+sqr(y2-y1);
 
-		# y-intercept = c-1
-		# if goesPositive: y-intercept ++
-		# if B: y-intercept ++
+            //ouch...
+            float closest = fmin(nextCrossXdstS, fmin(nextCrossYdstS, fmin(nextCrossDdstS, targetDstS)));
 
-		# Here goes:
+            char done = 0;
+            float moveToX, moveToY;
+            if (closest == targetDstS) {
+                moveToX = x2;
+                moveToY = y2;
+                done = 1;
+            } else if (closest == nextCrossXdstS) {
+                moveToX = nextCrossX;
+                moveToY = nextCrossX_y;
+            } else if (closest == nextCrossYdstS) {
+                moveToX = nextCrossY_x;
+                moveToY = nextCrossY;
+            } else if (closest == nextCrossDdstS) {
+                moveToX = nextCrossD_x;
+                moveToY = nextCrossD_y;
+            }
 
-		if overallGradient!=-1:
-			steep = abs(overallGradient)>1
-			if steep:
-				goesPositive = goesUp
-			else:
-				goesPositive = goesRight
-			
-			#The y-intercept for the currentbox is the (_x_,_y_)+1, so let's start with this value-1:
+            totalComplete += sqrt(closest);
+            float fractionComplete = totalComplete / totalDistance;
 
-			diagYintercept = inboxY+inboxX
-			inB = (positionInBoxX+positionInBoxY)>probespacing
+            //eMove is relative!
+            float eMove = totalRelativeE * fractionComplete;
+            //zMove is absolute.
+            float zMove = zStart + totalRelativeZ * fractionComplete;
 
-			if goesPositive:
-				diagYintercept = diagYintercept + probespacing
+            mangleMove(com, moveToX, moveToY, zMove, eMove);
 
-			if inB:
-				diagYintercept = diagYintercept + probespacing
-
-			nextCrossD_x = (diagYintercept-moveC) / (overallGradient+1)
-			#use the D-line equation as it's guaranteed to be sensible but the moveTo line might have a stupid graident.
-			nextCrossD_y = -1 * nextCrossD_x + diagYintercept
-			ncd_dx = (nextCrossD_x-x1)
-			ncd_dy = (nextCrossD_y-y1)
-			#make sure we only accept line crossings in the direction we're going.
-			#This test should be redundant now. (due to more rigorious line finding method)
-			if ((ncd_dx<0) == goesRight) or ((ncd_dy<0) == goesUp):
-				nextCrossDdstS = IGNORE_DISTANCE
-			else:
-				nextCrossDdstS = ncd_dx**2 + ncd_dy**2
-			
-			#we dont care about the D crossing if we're already on this point.
-			if (nextCrossDdstS<=0): nextCrossDdstS = IGNORE_DISTANCE
-
-			#print "will cross D-line at (%.2f,%.2f) in %.2f"%(nextCrossD_x,nextCrossD_y,math.sqrt(nextCrossDdstS))
-		else:
-			#parallel to this line so no distance to intercept.
-			nextCrossDdstS = IGNORE_DISTANCE
-
-
-		targetDstS = (x2-x1)**2 + (y2-y1)**2
-		#print "target is %.2f away."%math.sqrt(targetDstS);
-
-		closest = min(nextCrossXdstS,nextCrossYdstS,nextCrossDdstS,targetDstS);
-
-		#print "closest crossing is %.2f far away."%math.sqrt(closest)
-
-		done = False
-		if closest==targetDstS:
-			#print "moving to the target",
-			moveToX = x2
-			moveToY = y2
-			done = True
-		elif nextCrossXdstS==closest:
-			#print "moving to the next X-crossing",
-			moveToX = nextCrossX
-			moveToY = nextCrossX_y
-		elif nextCrossYdstS==closest:
-			#print "moving to the next Y-crossing",
-			moveToX = nextCrossY_x
-			moveToY = nextCrossY
-		elif nextCrossDdstS==closest:
-			#print "moving to the next D-crossing",
-			moveToX = nextCrossD_x
-			moveToY = nextCrossD_y
-
-		#do not set moveToX/moveToY by default to fail fast if none matched.
-
-
-		#print "at (%.2f,%.2f)"%(moveToX,moveToY)
-
-		#How much of the remaining line is being consumed?
-		totalComplete += math.sqrt(closest)
-		fractionComplete = totalComplete/totalDistance
-
-		#calculate new E position (assuming absolute E is wanted by the consumer)
-		eMove = eStart + totalRelativeE*fractionComplete
-
-		#Calculate what Z should be at the end of this sub-move
-		zMove = zStart + totalRelativeZ*fractionComplete
-
-
-		commitMove(moveToX,moveToY,zMove,eMove,travel,extras)
-
-		if done:
-			#print "Total dist: %.2f		Segment Sum: %.2f"%(totalDistance, moveDst)
-			if abs(totalDistance - moveDst)>10**-6:
-				print "WARNING: broken maths detected! segments don't sum to whole length accurately."
-				pprint.pprint(locals())
-				quit()
-			#print "moveTo done."
-			#print
-			return
-		*/
+            if (done) {
+                break;
+            }
+        }
     }
 
     //Now 'correct' the E offset to show we've moved as much as the original unmangled GCode intended: (if we're in absolute E moves)
-    fixupE(com, tE);
+    fixupE(com, e2);
 }
 
 #endif

@@ -66,4 +66,7 @@
 //If the correct-by height is greater than this the firmare will never correct the geometry.
 #define BEDCOMPENSATION_NEVERCORRECT_HEIGHT 9999.9
 
+//Define this to get a whole load of debug prints to the console. (will use a lot of RAM, flash and really impact print performance)
+#define BEDCOMPENSATION_DEBUG
+
 #endif

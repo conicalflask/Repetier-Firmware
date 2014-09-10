@@ -397,7 +397,7 @@ def moveTo(to, travel, extras):
 				#normal non-infinite gradient
 				nextCrossY_x = (nextCrossY-moveC)/overallGradient
 			else:
-				#infinite gradient means a move without chaning X value.
+				#infinite gradient means a move without changing X value.
 				#(the move is parallel to Y-axis)
 				nextCrossY_x = x1
 			nextCrossY_x_dst = nextCrossY_x-x1
