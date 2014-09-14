@@ -1463,17 +1463,25 @@ void Printer::freeBedMesh() {
     }
 }
 
+static char lpmeshX = 99, lpmeshY = 99;
+static float lpmeshZ = 0.0;
+
 /* 
  * Probes the bed at the given mesh coords but doesn't do any checking at all!
  */
 float probeBedAtReal(char meshX, char meshY) {
+    //Return the cached result to avoid repeatedly probing the same location unnecesarily.
+    if (meshX == lpmeshX && meshY == lpmeshY) return lpmeshZ;
     float xProbe = meshX*Printer::meshSpacing + Printer::meshOffsetX + BEDCOMPENSATION_MARGIN;
     float yProbe = meshY*Printer::meshSpacing + Printer::meshOffsetY + BEDCOMPENSATION_MARGIN;
     
     Printer::moveToReal(xProbe,yProbe,Printer::bedCompensationProbeHeight,IGNORE_COORDINATE,EEPROM::zProbeXYSpeed());
     float pVal = Printer::runZProbe(false,false);
     Printer::updateCurrentPosition();
-    return Printer::currentPosition[Z_AXIS]-pVal;
+    lpmeshZ = Printer::currentPosition[Z_AXIS]-pVal;
+    lpmeshX = meshX;
+    lpmeshY = meshY;
+    return lpmeshZ;
 }
 
 /**
@@ -1644,6 +1652,9 @@ float buildBedMesh0() {
  * Generates a print surface mesh. Returns 0 for success, otherwise failure (probably memory allocation failure.)
  */
 char Printer::buildBedMesh() {
+    //1: clear old mesh if it exists
+    Printer::freeBedMesh();
+
     int meshBufferSize = sizeof(struct meshTriangle)*Printer::meshWidth*Printer::meshWidth*2;
     Com::printFLN(Com::tMeshSize, meshBufferSize);
 

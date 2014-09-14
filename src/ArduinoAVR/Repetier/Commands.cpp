@@ -879,11 +879,15 @@ void Commands::executeGCode(GCode *com)
 
                 Printer::meshWidth = (char)(( (maxX+Printer::meshSpacing) - (Printer::meshOffsetX+BEDCOMPENSATION_MARGIN) )/Printer::meshSpacing);
 
-                //1: clear old mesh if it exists
-                Printer::freeBedMesh();
-
                 //2: Generate a fresh mesh. (possibly more than once if Z is WAY off)
-                if (Printer::buildBedMesh()) {
+                char meshSuccess = 0;
+                //Always generate the mesh if we don't have one or of R wasn't specified.
+                //Alternatively, don't generate the mesh if it's valid and R was specified.
+                if (!Printer::mesh || !com->hasR()) {
+                    meshSuccess = Printer::buildBedMesh();
+                }
+
+                if (meshSuccess) {
                     //error :(
                     //not sure what to do. I guess nothing.
                 } else {

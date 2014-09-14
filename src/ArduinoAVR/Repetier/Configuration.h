@@ -50,9 +50,7 @@
 #define BEDCOMPENSATION_DEFAULT_SPACING 30.0
 
 //The maximum size of a move that will still use the fastpath: (3mm seems like a reasonable starting point. It should certainly be less than (probespacing/3).
-//#define BEDCOMPENSATION_FASTPATH_MAXLENGTH 3.0
- //until we have a slowpath, every move must be fast!
-#define BEDCOMPENSATION_FASTPATH_MAXLENGTH 99999.9
+#define BEDCOMPENSATION_FASTPATH_MAXLENGTH 3.0
 
 //The lowest bed point needs to be as close to zero as possible, but never less than 0. If the point is in the interval [0,BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION] it is allowed.
 #define BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION 0.1
