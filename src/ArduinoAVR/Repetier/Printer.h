@@ -186,6 +186,7 @@ public:
     static char bedCompensationStatus;
     static float Eposition;
 	static float bedBadnessScore;
+    static float currentPositionZgCode;
 
 #endif
 

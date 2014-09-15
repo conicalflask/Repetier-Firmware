@@ -316,7 +316,7 @@ def moveTo(to, travel, extras):
 	global splitEPosition
 	splitEPosition = e1
 
-	#print "Move requested from current position (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f"%(x1,y1,z1,x,y,z,e)
+	print "Move requested from current position (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) e: %.2f"%(x1,y1,z1,x,y,z,e)
 
 	totalDistance = math.sqrt((x2-x1)**2 + (y2-y1)**2)
 	
@@ -325,7 +325,7 @@ def moveTo(to, travel, extras):
 	moveDst = 0
 
 	#fastpath:
-	if (totalDistance<math.sqrt(FASTPATH_DISTANCE_SQR):
+	if (totalDistance<math.sqrt(FASTPATH_DISTANCE_SQR)):
 		commitMove(x,y,z,e,travel, extras)
 		#print "moveTo done. (fastpath)"
 		#print
@@ -360,8 +360,10 @@ def moveTo(to, travel, extras):
 		inboxX = x1 - positionInBoxX
 		inboxY = y1 - positionInBoxY
 
-		#print "finding next point to goto",
-		#print "from current position (%.2f,%.2f,%.2f)"%(x1,y1,z1)
+		print "positionInBoxX %.2f, positionInBoxY %.2f, inboxX %.2f, inboxY %.2f"%(positionInBoxX, positionInBoxY, inboxX, inboxY)
+
+		print "finding next point to goto",
+		print "from current position (%.2f,%.2f,%.2f)"%(x1,y1,z1)
 
 		
 		if goesRight:
@@ -385,7 +387,7 @@ def moveTo(to, travel, extras):
 			nextCrossXdstS = distanceToX**2 + nextCrossX_y_dst**2
 			#we dont care about the X crossing if we're already on this point.
 			if (nextCrossXdstS<=0): nextCrossXdstS = IGNORE_DISTANCE
-			#print "will cross X-line at (%.2f,%.2f) in %.2f"%(nextCrossX,nextCrossX_y,math.sqrt(nextCrossXdstS))
+			print "will cross X-line at (%.2f,%.2f) in %.2f"%(nextCrossX,nextCrossX_y,math.sqrt(nextCrossXdstS))
 		else:
 			#In this case we're moving parallel to the Y axis so will never cross an X line.
 			nextCrossXdstS = IGNORE_DISTANCE
@@ -404,7 +406,7 @@ def moveTo(to, travel, extras):
 			nextCrossYdstS = distanceToY**2 + nextCrossY_x_dst**2
 			#we dont care about the Y crossing if we're already on this point.
 			if (nextCrossYdstS<=0): nextCrossYdstS = IGNORE_DISTANCE
-			#print "will cross Y-line at (%.2f,%.2f) in %.2f"%(nextCrossY_x,nextCrossY,math.sqrt(nextCrossYdstS))
+			print "will cross Y-line at (%.2f,%.2f) in %.2f"%(nextCrossY_x,nextCrossY,math.sqrt(nextCrossYdstS))
 		else:
 			#In this case we're moving parallel to the X axis so will never cross a Y line.
 			nextCrossYdstS = IGNORE_DISTANCE
@@ -475,42 +477,42 @@ def moveTo(to, travel, extras):
 			#we dont care about the D crossing if we're already on this point.
 			if (nextCrossDdstS<=0): nextCrossDdstS = IGNORE_DISTANCE
 
-			#print "will cross D-line at (%.2f,%.2f) in %.2f"%(nextCrossD_x,nextCrossD_y,math.sqrt(nextCrossDdstS))
+			print "will cross D-line at (%.2f,%.2f) in %.2f"%(nextCrossD_x,nextCrossD_y,math.sqrt(nextCrossDdstS))
 		else:
 			#parallel to this line so no distance to intercept.
 			nextCrossDdstS = IGNORE_DISTANCE
 
 
 		targetDstS = (x2-x1)**2 + (y2-y1)**2
-		#print "target is %.2f away."%math.sqrt(targetDstS);
+		print "target is %.2f away."%math.sqrt(targetDstS);
 
 		closest = min(nextCrossXdstS,nextCrossYdstS,nextCrossDdstS,targetDstS);
 
-		#print "closest crossing is %.2f far away."%math.sqrt(closest)
+		print "closest crossing is %.2f far away."%math.sqrt(closest)
 
 		done = False
 		if closest==targetDstS:
-			#print "moving to the target",
+			print "moving to the target",
 			moveToX = x2
 			moveToY = y2
 			done = True
 		elif nextCrossXdstS==closest:
-			#print "moving to the next X-crossing",
+			print "moving to the next X-crossing",
 			moveToX = nextCrossX
 			moveToY = nextCrossX_y
 		elif nextCrossYdstS==closest:
-			#print "moving to the next Y-crossing",
+			print "moving to the next Y-crossing",
 			moveToX = nextCrossY_x
 			moveToY = nextCrossY
 		elif nextCrossDdstS==closest:
-			#print "moving to the next D-crossing",
+			print "moving to the next D-crossing",
 			moveToX = nextCrossD_x
 			moveToY = nextCrossD_y
 
 		#do not set moveToX/moveToY by default to fail fast if none matched.
 
 
-		#print "at (%.2f,%.2f)"%(moveToX,moveToY)
+		print "at (%.2f,%.2f)"%(moveToX,moveToY)
 
 		#How much of the remaining line is being consumed?
 		totalComplete += math.sqrt(closest)

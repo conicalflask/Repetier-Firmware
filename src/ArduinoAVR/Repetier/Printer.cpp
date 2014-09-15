@@ -190,6 +190,9 @@ int debugWaitLoop = 0;
 	//This value is mostly for fun. It's the ((sum of squares of the probed bed offsets) divided by the number of probe points) * 100 (to make it a more sensible range as good printers will be <0.1 otherwise.)
 	float Printer::bedBadnessScore;
 
+    //The most recently requested (from source GCode) Z position. Needed as the currentPosition[Z_AXIS] is post-mangling.
+    float Printer::currentPositionZgCode;
+
 #endif
 
 
@@ -985,6 +988,9 @@ void Printer::homeAxis(bool xaxis,bool yaxis,bool zaxis) // Delta homing code
 
     moveToReal(0,0,Printer::zMin+Printer::zLength,IGNORE_COORDINATE,homingFeedrate[Z_AXIS]); // Move to designed coordinates including translation
     updateCurrentPosition(true);
+    #ifdef BEDCOMPENSATION
+        Printer::currentPositionZgCode = Printer::currentPosition[Z_AXIS];
+    #endif
     UI_CLEAR_STATUS
     Commands::printCurrentPosition();
 }
@@ -1445,6 +1451,26 @@ void Printer::buildTransformationMatrix(float h1,float h2,float h3)
 
 #ifdef BEDCOMPENSATION
 
+#ifdef BEDCOMPENSATION_DEBUG
+
+void sdebug(char * buf) {
+    Com::print(buf);
+}
+
+void bdebug(char * buf, float val) {
+    Com::print(buf);
+    Com::print(" ");
+    Com::printFloat(val,3);
+    Com::print("\n");
+}
+
+#else
+
+#define bdebug(x,y)
+
+#endif
+
+
 /**
  * heh.
  */
@@ -1707,6 +1733,8 @@ char Printer::buildBedMesh() {
         float minSeen = buildBedMesh0();
         if (minSeen<0 || minSeen>BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION) {
             Com::printFLN(Com::tMeshFailedOffset);
+            //no need to hang onto useless data:
+            Printer::freeBedMesh();
             return 2;
         }
     }
@@ -1806,13 +1834,6 @@ void commitMoveGCode(GCode *com) {
  */
 float previousPointEMult = 1.0;
 
-/**
- * This represents the current position in Z according to the input gcode.
- *
- * We need to keep hold of this as currentPosition[2] is post mangling.
- */
-float currentPositionZgCode = 0.0;
-
 
 /**
  * Given a move GCode this will mangle it to have the corrected Z height and E-value.
@@ -1836,7 +1857,7 @@ void mangleMove(GCode *com, float targetX, float targetY, float targetZ, float t
     float moveZ = mappedZprecomp(zHere, targetZ);
 
     if (Printer::relativeCoordinateMode) {
-        com->setZ(moveZ-currentPositionZgCode);
+        com->setZ(moveZ-Printer::currentPositionZgCode);
     } else {
         com->setZ(moveZ);
     }
@@ -1864,8 +1885,13 @@ void mangleMove(GCode *com, float targetX, float targetY, float targetZ, float t
         
     }
 
+    #ifdef BEDCOMPENSATION_DEBUG
+    sdebug("post-mangle: ");
+    com->printCommand();
+    #endif
     commitMoveGCode(com);
-    currentPositionZgCode = targetZ;
+    Printer::updateCurrentPosition();
+    Printer::currentPositionZgCode = targetZ;
 }
 
 /**
@@ -1882,28 +1908,25 @@ void fixupE(GCode *com, float correctedE) {
     }
 }
 
-#ifdef BEDCOMPENSATION_DEBUG
-
-void bdebug(char * buf, float val) {
-    Com::print(buf);
-    Com::print(" ");
-    Com::printFloat(val,3);
-    Com::print("\n");
-}
-
-#endif
-
 /**
  * Does a G0/G1 command taking into account the bed compensation mesh.
  * It does this by re-writing the code and then performing the action as it would have happened.
  */
 void Printer::doMoveCommand(GCode *com) {
 
+    #ifdef BEDCOMPENSATION_DEBUG
+    sdebug("Current position: ");
+    Commands::printCurrentPosition();
+    sdebug("GCode move: ");
+    com->printCommand();
+
+    #endif
+
     //convinience definitions
     //Start coordinate (absolute)
     #define x1 (currentPosition[X_AXIS])
     #define y1 (currentPosition[Y_AXIS])
-    #define z1 (currentPosition[Z_AXIS])
+    #define z1 (Printer::currentPositionZgCode)
     #define e1 (Printer::Eposition)
 
     //End absolute coordinate:
@@ -1913,9 +1936,9 @@ void Printer::doMoveCommand(GCode *com) {
     //In any case we need to know the exact target Z height at the end of the move:
     if (com->hasZ()) {
         z2 = com->Z;
-        if (Printer::relativeCoordinateMode) z2 += currentPositionZgCode;
+        if (Printer::relativeCoordinateMode) z2 += z1;
     } else {
-        z2 = currentPositionZgCode;
+        z2 = z1;
     }
     
     //1) SUPER fast path (are Z above our distortion zone?)
@@ -1926,6 +1949,8 @@ void Printer::doMoveCommand(GCode *com) {
     if ((z1 > Printer::correctedByZ and z2 > Printer::correctedByZ) or com->hasNoXYZ()) {
         //JFDI:
         commitMoveGCode(com);
+        Printer::updateCurrentPosition();
+        if (com->hasZ()) Printer::currentPositionZgCode = com->Z;
         fixupE(com, com->E);
         return;
     }
@@ -1935,7 +1960,7 @@ void Printer::doMoveCommand(GCode *com) {
         x2 = com->X;
         if (Printer::relativeCoordinateMode) x2 += x1;
     } else {
-        x2 = y1;
+        x2 = x1;
     }
     if (com->hasY()) {
         y2 = com->Y;
@@ -1974,12 +1999,15 @@ void Printer::doMoveCommand(GCode *com) {
 
         //The M and C of the move's y=mx+c line equation.
         float overallGradient = (y2-y1)/(x2-x1);
-        float moveC = y1-overallGradient*x1;
+        float moveC = 0.0;
+        if (fabs(overallGradient)<INFINITY) {
+            //If the gradient is non-infinite then calculate the Y-intercept.
+            moveC = y1-overallGradient*x1;
+        }
 
-        #ifdef BEDCOMPENSATION_DEBUG
-            bdebug("Planned line m:",overallGradient);
-            bdebug("Planned line c:",moveC);
-        #endif
+        bdebug("Planned line m:",overallGradient);
+        bdebug("Planned line c:",moveC);
+        bdebug("totalDistance:",totalDistance);
 
         char goesRight = x2>x1;
         char goesUp = y2>y1;
@@ -1992,6 +2020,10 @@ void Printer::doMoveCommand(GCode *com) {
 
         float zStart = z1;
 
+        //make sure we catch runnaway loops:
+        //FIXME: remove or set test VERY high when working. 
+        char segments = 0;
+
         // The loop condition is embedded within:
         /**
          * The purpose of this loop is to split the current requested line into sublines.
@@ -2001,15 +2033,24 @@ void Printer::doMoveCommand(GCode *com) {
          * If the target point was closest, we go there instead and then finish.
          */
         while (1) {
+            if (segments++>100) {
+                sdebug("Too many segments in line. HALTING FOR DEBUG.\n");
+                Printer::kill(0);
+                while (1);
+            }
+
             float positionInBoxX = fmod(x1, Printer::meshSpacing);
+            if (positionInBoxX < 0) positionInBoxX += Printer::meshSpacing;
             float positionInBoxY = fmod(y1, Printer::meshSpacing);
+            if (positionInBoxY < 0) positionInBoxY += Printer::meshSpacing;
+
             float inboxX = x1 - positionInBoxX;
             float inboxY = y1 - positionInBoxY;
 
             float distanceToX, distanceToY;
             float nextCrossX, nextCrossY;
             if (goesRight) {
-                distanceToX = Printer::meshSpacing-positionInBoxX;
+                distanceToX = Printer::meshSpacing - positionInBoxX;
                 nextCrossX = inboxX + Printer::meshSpacing;
             } else {
                 distanceToX = -positionInBoxX;
@@ -2017,7 +2058,7 @@ void Printer::doMoveCommand(GCode *com) {
             }
 
             if (goesUp) {
-                distanceToY = Printer::meshSpacing-positionInBoxY;
+                distanceToY = Printer::meshSpacing - positionInBoxY;
                 nextCrossY = inboxY + Printer::meshSpacing;
             } else {
                 distanceToY = -positionInBoxY;
@@ -2035,7 +2076,10 @@ void Printer::doMoveCommand(GCode *com) {
             nextCrossX_y = overallGradient * nextCrossX + moveC;
             nextCrossX_y_dst = nextCrossX_y-y1;
             nextCrossXdstS = sqr(distanceToX) + sqr(nextCrossX_y_dst);
-            if (nextCrossXdstS<=0) nextCrossXdstS = INFINITY;
+            if (nextCrossXdstS<=0.01) nextCrossXdstS = INFINITY;
+            bdebug("X-crossing is away: ",sqrt(nextCrossXdstS));
+            bdebug("X x: ",nextCrossX);
+            bdebug("X y: ",nextCrossX_y);
 
             //2) Horizontal edges (parallel to X axis)
             float nextCrossY_x, nextCrossY_x_dst, nextCrossYdstS;
@@ -2048,7 +2092,10 @@ void Printer::doMoveCommand(GCode *com) {
             }
             nextCrossY_x_dst = nextCrossY_x - x1;
             nextCrossYdstS = sqr(distanceToY) + sqr(nextCrossY_x_dst);
-            if (nextCrossYdstS<=0) nextCrossYdstS = INFINITY;
+            if (nextCrossYdstS<=0.01) nextCrossYdstS = INFINITY;
+            bdebug("Y-crossing is away: ",sqrt(nextCrossYdstS));
+            bdebug("Y x: ",nextCrossY_x);
+            bdebug("Y y: ",nextCrossY);
 
             //3) Diagonal edges (See relevel.py (the reference for this whole idea), the reasoning behind this code is 'fun'...)
             float nextCrossD_x, nextCrossD_y, ncd_dx, ncd_dy, diagYintercept, nextCrossDdstS;
@@ -2084,13 +2131,17 @@ void Printer::doMoveCommand(GCode *com) {
                     nextCrossDdstS = sqr(ncd_dx) + sqr(ncd_dy);
                 }
 
-                if (nextCrossDdstS<=0) nextCrossDdstS = INFINITY;
+                if (nextCrossDdstS<=0.01) nextCrossDdstS = INFINITY;
+                bdebug("D-crossing is away: ",sqrt(nextCrossDdstS));
+                bdebug("D x: ",nextCrossD_x);
+                bdebug("D y: ",nextCrossD_y);
 
             } else {
                 nextCrossDdstS = INFINITY;
             }
 
             float targetDstS = sqr(x2-x1)+sqr(y2-y1);
+            bdebug("target is away: ",sqrt(targetDstS));
 
             //ouch...
             float closest = fmin(nextCrossXdstS, fmin(nextCrossYdstS, fmin(nextCrossDdstS, targetDstS)));
@@ -2101,16 +2152,30 @@ void Printer::doMoveCommand(GCode *com) {
                 moveToX = x2;
                 moveToY = y2;
                 done = 1;
+                sdebug("move to target\n");
             } else if (closest == nextCrossXdstS) {
                 moveToX = nextCrossX;
                 moveToY = nextCrossX_y;
+                sdebug("move to X\n");
             } else if (closest == nextCrossYdstS) {
                 moveToX = nextCrossY_x;
                 moveToY = nextCrossY;
+                sdebug("move to Y\n");
             } else if (closest == nextCrossDdstS) {
                 moveToX = nextCrossD_x;
                 moveToY = nextCrossD_y;
+                sdebug("move to D\n");
+            } else {
+                //none matched...? Goto target.
+                moveToX = x2;
+                moveToY = y2;
+                done = 1;
+                sdebug("No targets were closest!? Going to target.\n");
             }
+
+            bdebug("x->",moveToX);
+            bdebug("y->",moveToY);
+
 
             totalComplete += sqrt(closest);
             float fractionComplete = totalComplete / totalDistance;
