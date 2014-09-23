@@ -1900,10 +1900,10 @@ void mangleMove(GCode *com, float targetX, float targetY, float targetZ, float t
  * 
  * This must be done only AFTER all submoves have been issued.
  */
-void fixupE(GCode *com, float correctedE) {
+void fixupE(GCode *com, float originalGcodeE) {
     if (com->hasE() && !Printer::relativeExtruderCoordinateMode) {
-        Printer::currentPositionSteps[E_AXIS] = Printer::convertToMM(correctedE)*Printer::axisStepsPerMM[E_AXIS];
-        Printer::Eposition = correctedE;
+        Printer::currentPositionSteps[E_AXIS] = Printer::convertToMM(originalGcodeE)*Printer::axisStepsPerMM[E_AXIS];
+        Printer::Eposition = originalGcodeE;
         //As we've 'reset' our E meter to the value expected the next absolute move E GCode can carry on from where it expected.
     }
 }
@@ -1969,11 +1969,12 @@ void Printer::doMoveCommand(GCode *com) {
         y2 = y1;
     }
 
+    float gCodeE = 0;
     if (com->hasE()) {
         //This is used to 'catch up' the printer's E position after the move.
 
         //e2 is always relative!
-        e2 = com->E;
+        gCodeE = e2 = com->E;
 
         if (!Printer::relativeExtruderCoordinateMode) {
             e2 -= e1;
@@ -2077,9 +2078,9 @@ void Printer::doMoveCommand(GCode *com) {
             nextCrossX_y_dst = nextCrossX_y-y1;
             nextCrossXdstS = sqr(distanceToX) + sqr(nextCrossX_y_dst);
             if (nextCrossXdstS<=0.01) nextCrossXdstS = INFINITY;
-            bdebug("X-crossing is away: ",sqrt(nextCrossXdstS));
-            bdebug("X x: ",nextCrossX);
-            bdebug("X y: ",nextCrossX_y);
+            //bdebug("X-crossing is away: ",sqrt(nextCrossXdstS));
+            //bdebug("X x: ",nextCrossX);
+            //bdebug("X y: ",nextCrossX_y);
 
             //2) Horizontal edges (parallel to X axis)
             float nextCrossY_x, nextCrossY_x_dst, nextCrossYdstS;
@@ -2093,9 +2094,9 @@ void Printer::doMoveCommand(GCode *com) {
             nextCrossY_x_dst = nextCrossY_x - x1;
             nextCrossYdstS = sqr(distanceToY) + sqr(nextCrossY_x_dst);
             if (nextCrossYdstS<=0.01) nextCrossYdstS = INFINITY;
-            bdebug("Y-crossing is away: ",sqrt(nextCrossYdstS));
-            bdebug("Y x: ",nextCrossY_x);
-            bdebug("Y y: ",nextCrossY);
+            //bdebug("Y-crossing is away: ",sqrt(nextCrossYdstS));
+            //bdebug("Y x: ",nextCrossY_x);
+            //bdebug("Y y: ",nextCrossY);
 
             //3) Diagonal edges (See relevel.py (the reference for this whole idea), the reasoning behind this code is 'fun'...)
             float nextCrossD_x, nextCrossD_y, ncd_dx, ncd_dy, diagYintercept, nextCrossDdstS;
@@ -2132,16 +2133,16 @@ void Printer::doMoveCommand(GCode *com) {
                 }
 
                 if (nextCrossDdstS<=0.01) nextCrossDdstS = INFINITY;
-                bdebug("D-crossing is away: ",sqrt(nextCrossDdstS));
-                bdebug("D x: ",nextCrossD_x);
-                bdebug("D y: ",nextCrossD_y);
+                //bdebug("D-crossing is away: ",sqrt(nextCrossDdstS));
+                //bdebug("D x: ",nextCrossD_x);
+                //bdebug("D y: ",nextCrossD_y);
 
             } else {
                 nextCrossDdstS = INFINITY;
             }
 
             float targetDstS = sqr(x2-x1)+sqr(y2-y1);
-            bdebug("target is away: ",sqrt(targetDstS));
+            //bdebug("target is away: ",sqrt(targetDstS));
 
             //ouch...
             float closest = fmin(nextCrossXdstS, fmin(nextCrossYdstS, fmin(nextCrossDdstS, targetDstS)));
@@ -2152,25 +2153,25 @@ void Printer::doMoveCommand(GCode *com) {
                 moveToX = x2;
                 moveToY = y2;
                 done = 1;
-                sdebug("move to target\n");
+                //sdebug("move to target\n");
             } else if (closest == nextCrossXdstS) {
                 moveToX = nextCrossX;
                 moveToY = nextCrossX_y;
-                sdebug("move to X\n");
+                //sdebug("move to X\n");
             } else if (closest == nextCrossYdstS) {
                 moveToX = nextCrossY_x;
                 moveToY = nextCrossY;
-                sdebug("move to Y\n");
+                //sdebug("move to Y\n");
             } else if (closest == nextCrossDdstS) {
                 moveToX = nextCrossD_x;
                 moveToY = nextCrossD_y;
-                sdebug("move to D\n");
+                //sdebug("move to D\n");
             } else {
                 //none matched...? Goto target.
                 moveToX = x2;
                 moveToY = y2;
                 done = 1;
-                sdebug("No targets were closest!? Going to target.\n");
+                //sdebug("No targets were closest!? Going to target.\n");
             }
 
             bdebug("x->",moveToX);
@@ -2182,6 +2183,7 @@ void Printer::doMoveCommand(GCode *com) {
 
             //eMove is relative!
             float eMove = totalRelativeE * fractionComplete;
+            bdebug("eMove->",moveToY);
             //zMove is absolute.
             float zMove = zStart + totalRelativeZ * fractionComplete;
 
@@ -2194,7 +2196,7 @@ void Printer::doMoveCommand(GCode *com) {
     }
 
     //Now 'correct' the E offset to show we've moved as much as the original unmangled GCode intended: (if we're in absolute E moves)
-    fixupE(com, e2);
+    fixupE(com, gCodeE);
 }
 
 #endif
