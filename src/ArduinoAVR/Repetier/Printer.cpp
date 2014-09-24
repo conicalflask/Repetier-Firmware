@@ -1991,7 +1991,6 @@ void Printer::doMoveCommand(GCode *com) {
      * Fastpath: Is the move shorter than our fastpath limit?
      */
     if (totalDistance<BEDCOMPENSATION_FASTPATH_MAXLENGTH) {
-        //Fastpath onlypath... at the moment.
         mangleMove(com, x2, y2, z2, e2);
     } else {
         //4) slowpath (split move into smaller moves.)
@@ -2178,12 +2177,14 @@ void Printer::doMoveCommand(GCode *com) {
             bdebug("y->",moveToY);
 
 
-            totalComplete += sqrt(closest);
+            float thisMoveDistance = sqrt(closest);
+            totalComplete += thisMoveDistance;
+            
             float fractionComplete = totalComplete / totalDistance;
 
             //eMove is relative!
-            float eMove = totalRelativeE * fractionComplete;
-            bdebug("eMove->",moveToY);
+            float eMove = totalRelativeE * thisMoveDistance;
+            bdebug("eMove->",eMove);
             //zMove is absolute.
             float zMove = zStart + totalRelativeZ * fractionComplete;
 
