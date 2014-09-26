@@ -383,6 +383,8 @@ FSTRINGVALUE(Com::tMeshFailedOffset, "Failed to create bed surface mesh because 
 FSTRINGVALUE(Com::tCorrectedBy, "Prints will be corrected by [mm]: ")
 FSTRINGVALUE(Com::tMeshCleared, "Bed mesh cleared.")
 FSTRINGVALUE(Com::tBedBadness, "Bed badness score (lower is better): ")
+FSTRINGVALUE(Com::tProbingAllowance, "Probing bed with maximum allowed error [mm]: ")
+
 #endif
 
 void Com::printWarningF(FSTRINGPARAM(text)) {

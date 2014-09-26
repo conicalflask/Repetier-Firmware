@@ -370,6 +370,7 @@ FSTRINGVAR(tMeshFailedOffset)
 FSTRINGVAR(tCorrectedBy)
 FSTRINGVAR(tMeshCleared)
 FSTRINGVAR(tBedBadness)
+FSTRINGVAR(tProbingAllowance)
 #endif
 
 static void printNumber(uint32_t n);

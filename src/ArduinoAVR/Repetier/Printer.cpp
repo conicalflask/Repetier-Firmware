@@ -1706,52 +1706,59 @@ char Printer::buildBedMesh() {
 
     //1st attempt at building the mesh:
     UI_STATUS_UPD(UI_TEXT_BED_PROBE);
-    float minSeen = buildBedMesh0();
-    if (minSeen<0 || minSeen>BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION) {
-        //The mesh was too far offset so attempt again:
-        UI_STATUS_UPD(UI_TEXT_BED_PROBE_RETRY);
-        Com::printFLN(Com::tMeshOffsetTooLarge, minSeen);
 
+    char thisRetry = 1;
+    float acceptableDeviation = BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION;
+
+    while (thisRetry <= BEDCOMPENSATION_PROBE_MAX_RETRIES) {
+
+        Com::printFLN(Com::tProbingAllowance, acceptableDeviation);
+
+        float minSeen = buildBedMesh0();
+        if (minSeen >= 0 && minSeen < acceptableDeviation) {
+            //SUCCESS!
+            Com::printFLN(Com::tMesh);
+            for (int i = 0; i<(Printer::meshWidth*Printer::meshWidth)*2; i++) {
+                Com::printF(Com::tMeshTriangle, i);
+                Com::printF(Com::tMeshA, Printer::mesh[i].A);
+                Com::printF(Com::tMeshB, Printer::mesh[i].B);
+                Com::printF(Com::tMeshC, Printer::mesh[i].C);
+                Com::printFLN(Com::tMeshD, Printer::mesh[i].D);
+            }
+
+            UI_CLEAR_STATUS
+
+            //Success!
+            return 0;
+        }
+        // failure...
+
+
+        //Setup to retry.
+        Com::printFLN(Com::tMeshOffsetTooLarge, minSeen);
 
         //Update zLength of the printer to account for the lowest probed point.
         Printer::updateCurrentPosition();
         Printer::zLength -= minSeen;
         //Over compensate by a tiny amount: (always positive, to try to ensure we don't get a negative outcome)
-        Printer::zLength += BEDCOMPENSATION_ZPROBE_ERROR/2.0;
+        Printer::zLength += BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION/2.0;
 
         Printer::updateDerivedParameter();
         Printer::homeAxis(true,true,true);
         Printer::updateCurrentPosition();
 
-/*
-        //Make sure we don't appear fully dead:
-        GCode::readFromSerial();
-        Commands::checkForPeriodicalActions();
-*/
-
-
-        float minSeen = buildBedMesh0();
-        if (minSeen<0 || minSeen>BEDCOMPENSATION_ACCEPTABLE_ZERO_DEVIATION) {
-            Com::printFLN(Com::tMeshFailedOffset);
-            //no need to hang onto useless data:
-            Printer::freeBedMesh();
-            return 2;
-        }
+        //increase allowance each time.
+        acceptableDeviation += BEDCOMPENSATION_ZPROBE_ERROR;
+        thisRetry++;
     }
 
-    Com::printFLN(Com::tMesh);
-    for (int i = 0; i<(Printer::meshWidth*Printer::meshWidth)*2; i++) {
-        Com::printF(Com::tMeshTriangle, i);
-        Com::printF(Com::tMeshA, Printer::mesh[i].A);
-        Com::printF(Com::tMeshB, Printer::mesh[i].B);
-        Com::printF(Com::tMeshC, Printer::mesh[i].C);
-        Com::printFLN(Com::tMeshD, Printer::mesh[i].D);
-    }
 
-    UI_CLEAR_STATUS
+    Com::printFLN(Com::tMeshFailedOffset);
+    //no need to hang onto useless data:
+    Printer::freeBedMesh();
+    return 2;
+    
 
-    //Success!
-    return 0;
 }
 
 /**
@@ -1973,9 +1980,10 @@ void Printer::doMoveCommand(GCode *com) {
     if (com->hasE()) {
         //This is used to 'catch up' the printer's E position after the move.
 
-        //e2 is always relative!
         gCodeE = e2 = com->E;
 
+
+        //e2 is always relative!
         if (!Printer::relativeExtruderCoordinateMode) {
             e2 -= e1;
         }
@@ -2015,6 +2023,7 @@ void Printer::doMoveCommand(GCode *com) {
         float totalComplete = 0.0;
 
         #define totalRelativeE e2
+        bdebug("totalRelativeE:",totalRelativeE);
 
         float totalRelativeZ = z2-z1;
 
@@ -2179,13 +2188,14 @@ void Printer::doMoveCommand(GCode *com) {
 
             float thisMoveDistance = sqrt(closest);
             totalComplete += thisMoveDistance;
-            
-            float fractionComplete = totalComplete / totalDistance;
 
             //eMove is relative!
-            float eMove = totalRelativeE * thisMoveDistance;
+            float thisMoveFraction = thisMoveDistance / totalDistance; //what proportion of the move is this submove?
+            float eMove = totalRelativeE * thisMoveFraction;
             bdebug("eMove->",eMove);
+            
             //zMove is absolute.
+            float fractionComplete = totalComplete / totalDistance; //what proportion through our major move are we?
             float zMove = zStart + totalRelativeZ * fractionComplete;
 
             mangleMove(com, moveToX, moveToY, zMove, eMove);

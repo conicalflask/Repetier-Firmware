@@ -940,7 +940,7 @@ void Commands::executeGCode(GCode *com)
             {
                 Printer::currentPositionSteps[E_AXIS] = Printer::convertToMM(com->E)*Printer::axisStepsPerMM[E_AXIS];
                 #ifdef BEDCOMPENSATION
-                //bed compensation gcode mongling needs the equivalent of currentPosition[3]
+                //bed compensation gcode mongling needs the equivalent of currentPosition[E_AXIS]
                 Printer::Eposition = com->E;
                 #endif
             }
