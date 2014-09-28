@@ -333,12 +333,12 @@ def moveTo(to, travel, extras):
 
 	if x2-x1==0:
 		overallGradient = float("+inf")
-		#print "Planned line eq: virtical line"
+		print "Planned line eq: virtical line"
 		moveC = 0 #line equations are nonsense for this line
 	else:
 		overallGradient = (y2-y1)/(x2-x1)
 		moveC = y1-overallGradient*x1   # C value for line equation of this move.
-		#print "Planned line eq: y=%.2fx + %.2f"%(overallGradient,moveC)
+		print "Planned line eq: y=%.2fx + %.2f"%(overallGradient,moveC)
 
 	goesRight = x2>x1
 	goesUp = y2>y1

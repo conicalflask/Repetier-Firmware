@@ -1468,6 +1468,8 @@ void bdebug(char * buf, float val) {
 
 #define bdebug(x,y)
 
+#define sdebug(a)
+
 #endif
 
 
@@ -1931,8 +1933,8 @@ void Printer::doMoveCommand(GCode *com) {
 
     //convinience definitions
     //Start coordinate (absolute)
-    #define x1 (currentPosition[X_AXIS])
-    #define y1 (currentPosition[Y_AXIS])
+    #define x1 (lastCmdPos[X_AXIS])
+    #define y1 (lastCmdPos[Y_AXIS])
     #define z1 (Printer::currentPositionZgCode)
     #define e1 (Printer::Eposition)
 
@@ -2008,7 +2010,7 @@ void Printer::doMoveCommand(GCode *com) {
         //The M and C of the move's y=mx+c line equation.
         float overallGradient = (y2-y1)/(x2-x1);
         float moveC = 0.0;
-        if (fabs(overallGradient)<INFINITY) {
+        if ((x2-x1)!=0) {
             //If the gradient is non-infinite then calculate the Y-intercept.
             moveC = y1-overallGradient*x1;
         }
@@ -2086,9 +2088,9 @@ void Printer::doMoveCommand(GCode *com) {
             nextCrossX_y_dst = nextCrossX_y-y1;
             nextCrossXdstS = sqr(distanceToX) + sqr(nextCrossX_y_dst);
             if (nextCrossXdstS<=0.01) nextCrossXdstS = INFINITY;
-            //bdebug("X-crossing is away: ",sqrt(nextCrossXdstS));
-            //bdebug("X x: ",nextCrossX);
-            //bdebug("X y: ",nextCrossX_y);
+            bdebug("X-crossing is away: ",sqrt(nextCrossXdstS));
+            bdebug("X x: ",nextCrossX);
+            bdebug("X y: ",nextCrossX_y);
 
             //2) Horizontal edges (parallel to X axis)
             float nextCrossY_x, nextCrossY_x_dst, nextCrossYdstS;
@@ -2102,9 +2104,9 @@ void Printer::doMoveCommand(GCode *com) {
             nextCrossY_x_dst = nextCrossY_x - x1;
             nextCrossYdstS = sqr(distanceToY) + sqr(nextCrossY_x_dst);
             if (nextCrossYdstS<=0.01) nextCrossYdstS = INFINITY;
-            //bdebug("Y-crossing is away: ",sqrt(nextCrossYdstS));
-            //bdebug("Y x: ",nextCrossY_x);
-            //bdebug("Y y: ",nextCrossY);
+            bdebug("Y-crossing is away: ",sqrt(nextCrossYdstS));
+            bdebug("Y x: ",nextCrossY_x);
+            bdebug("Y y: ",nextCrossY);
 
             //3) Diagonal edges (See relevel.py (the reference for this whole idea), the reasoning behind this code is 'fun'...)
             float nextCrossD_x, nextCrossD_y, ncd_dx, ncd_dy, diagYintercept, nextCrossDdstS;
@@ -2141,16 +2143,16 @@ void Printer::doMoveCommand(GCode *com) {
                 }
 
                 if (nextCrossDdstS<=0.01) nextCrossDdstS = INFINITY;
-                //bdebug("D-crossing is away: ",sqrt(nextCrossDdstS));
-                //bdebug("D x: ",nextCrossD_x);
-                //bdebug("D y: ",nextCrossD_y);
+                bdebug("D-crossing is away: ",sqrt(nextCrossDdstS));
+                bdebug("D x: ",nextCrossD_x);
+                bdebug("D y: ",nextCrossD_y);
 
             } else {
                 nextCrossDdstS = INFINITY;
             }
 
             float targetDstS = sqr(x2-x1)+sqr(y2-y1);
-            //bdebug("target is away: ",sqrt(targetDstS));
+            bdebug("target is away: ",sqrt(targetDstS));
 
             //ouch...
             float closest = fmin(nextCrossXdstS, fmin(nextCrossYdstS, fmin(nextCrossDdstS, targetDstS)));
@@ -2161,19 +2163,19 @@ void Printer::doMoveCommand(GCode *com) {
                 moveToX = x2;
                 moveToY = y2;
                 done = 1;
-                //sdebug("move to target\n");
+                sdebug("move to target\n");
             } else if (closest == nextCrossXdstS) {
                 moveToX = nextCrossX;
                 moveToY = nextCrossX_y;
-                //sdebug("move to X\n");
+                sdebug("move to X\n");
             } else if (closest == nextCrossYdstS) {
                 moveToX = nextCrossY_x;
                 moveToY = nextCrossY;
-                //sdebug("move to Y\n");
+                sdebug("move to Y\n");
             } else if (closest == nextCrossDdstS) {
                 moveToX = nextCrossD_x;
                 moveToY = nextCrossD_y;
-                //sdebug("move to D\n");
+                sdebug("move to D\n");
             } else {
                 //none matched...? Goto target.
                 moveToX = x2;
